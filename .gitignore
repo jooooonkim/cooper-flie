@@ -1,0 +1,9 @@
+.venv/
+__pycache__/
+*.pyc
+.DS_Store
+
+# cflib TOC cache, downloaded hand model, flight logs
+cache/
+models/
+logs/
