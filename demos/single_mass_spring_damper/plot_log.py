@@ -17,7 +17,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 import matplotlib.pyplot as plt
 import numpy as np
 
-from common.config import LOG_DIR
+from common.paths import LOG_DIR
 
 
 def load(path):

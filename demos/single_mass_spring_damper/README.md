@@ -24,8 +24,9 @@ release peaks around 7 deg of tilt.
 ## Run order
 
 1. `calibrate_signs.py` — flies three small steps and prints the pitch, roll
-   and yaw-rate signs. Copy them into `attitude` in `config.yaml` and set
-   `verified: true`. Do this once per firmware version.
+   and yaw-rate signs. Copy them into the settings block at the top of
+   `msd_pitch.py` and set `SIGNS_VERIFIED = True`. Do this once per firmware
+   version.
 2. `msd_pitch.py --sim` — try it without hardware.
 3. `msd_pitch.py` — fly it. Grab to drag the mass along x, open your hand to
    release it. `+`/`-` change k, `[`/`]` change b, `q` lands, `Esc` kills.

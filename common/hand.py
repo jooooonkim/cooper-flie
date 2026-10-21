@@ -1,6 +1,6 @@
 """Webcam hand tracking with grab detection, running in its own thread.
 
-    with HandTracker(cfg) as tracker:
+    with HandTracker(camera=0, grab_below=1.3, release_above=1.6) as tracker:
         frame_id, frame, hand = tracker.latest()
 
 `frame` is the (mirrored) BGR image the landmarks were found in, and `hand`
@@ -17,12 +17,13 @@ from flickering at the boundary.
 import threading
 import time
 import urllib.request
+from pathlib import Path
 from dataclasses import dataclass, replace
 
 import cv2
 import numpy as np
 
-from .config import resolve
+from .paths import MODEL_PATH
 from .util import OneEuroFilter
 
 MODEL_URL = (
@@ -66,17 +67,34 @@ def openness_ratio(pts, width, height):
 
 
 class HandTracker:
-    def __init__(self, cfg):
-        self.cam_cfg = cfg["camera"]
-        self.cfg = cfg["hand"]
+    """
+    camera, width, height, mirror   webcam index and capture size; mirror so
+                                    moving your hand right moves it right on screen
+    grab_below, release_above       openness thresholds (see the module docstring)
+    debounce_frames                 frames a new grab state must persist
+    lost_timeout                    s without a hand before it counts as released
+    filter_min_cutoff, filter_beta  One Euro smoothing: lower cutoff = smoother
+                                    when still, higher beta = less lag when moving
+    """
+
+    def __init__(self, camera=0, width=640, height=480, mirror=True,
+                 grab_below=1.30, release_above=1.60, debounce_frames=3, lost_timeout=0.3,
+                 min_detection_confidence=0.6, min_tracking_confidence=0.5,
+                 filter_min_cutoff=1.0, filter_beta=0.05, model_path=MODEL_PATH):
+        self.camera, self.width, self.height, self.mirror = camera, width, height, mirror
+        self.grab_below, self.release_above = grab_below, release_above
+        self.debounce_frames, self.lost_timeout = debounce_frames, lost_timeout
+        self.min_detection_confidence = min_detection_confidence
+        self.min_tracking_confidence = min_tracking_confidence
+        self.model_path = Path(model_path)
         self._lock = threading.Lock()
         self._stop = threading.Event()
         self._thread = None
         self._frame = None
         self._frame_id = 0
         self._state = HandState()
-        self._fu = OneEuroFilter(self.cfg["filter_min_cutoff"], self.cfg["filter_beta"])
-        self._fv = OneEuroFilter(self.cfg["filter_min_cutoff"], self.cfg["filter_beta"])
+        self._fu = OneEuroFilter(filter_min_cutoff, filter_beta)
+        self._fv = OneEuroFilter(filter_min_cutoff, filter_beta)
         self._pending = None  # grab state waiting out the debounce
         self._pending_count = 0
         self._last_seen = 0.0
@@ -84,24 +102,24 @@ class HandTracker:
     def __enter__(self):
         from mediapipe.tasks.python import BaseOptions, vision
 
-        model = ensure_model(resolve(self.cfg["model_path"]))
+        model = ensure_model(self.model_path)
         options = vision.HandLandmarkerOptions(
             base_options=BaseOptions(model_asset_path=str(model)),
             running_mode=vision.RunningMode.VIDEO,
             num_hands=1,
-            min_hand_detection_confidence=self.cfg["min_detection_confidence"],
-            min_hand_presence_confidence=self.cfg["min_detection_confidence"],
-            min_tracking_confidence=self.cfg["min_tracking_confidence"],
+            min_hand_detection_confidence=self.min_detection_confidence,
+            min_hand_presence_confidence=self.min_detection_confidence,
+            min_tracking_confidence=self.min_tracking_confidence,
         )
         self._landmarker = vision.HandLandmarker.create_from_options(options)
 
-        self._cap = cv2.VideoCapture(self.cam_cfg["index"], cv2.CAP_DSHOW)
+        self._cap = cv2.VideoCapture(self.camera, cv2.CAP_DSHOW)
         if not self._cap.isOpened():
-            self._cap = cv2.VideoCapture(self.cam_cfg["index"])
+            self._cap = cv2.VideoCapture(self.camera)
         if not self._cap.isOpened():
-            raise RuntimeError(f"Could not open camera {self.cam_cfg['index']}")
-        self._cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.cam_cfg["width"])
-        self._cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.cam_cfg["height"])
+            raise RuntimeError(f"Could not open camera {self.camera}")
+        self._cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.width)
+        self._cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.height)
 
         self._thread = threading.Thread(target=self._run, daemon=True)
         self._thread.start()
@@ -130,7 +148,7 @@ class HandTracker:
             if not ok:
                 time.sleep(0.01)
                 continue
-            if self.cam_cfg.get("mirror", True):
+            if self.mirror:
                 frame = cv2.flip(frame, 1)
             t = time.monotonic()
             fps = 0.9 * fps + 0.1 / max(t - prev_t, 1e-3)
@@ -152,7 +170,7 @@ class HandTracker:
     def _update(self, result, t, width, height):
         prev = self._state
         if not result.hand_landmarks:
-            if t - self._last_seen > self.cfg["lost_timeout"]:
+            if t - self._last_seen > self.lost_timeout:
                 self._fu.reset()
                 self._fv.reset()
                 self._pending = None
@@ -167,16 +185,16 @@ class HandTracker:
 
         grabbed = prev.grabbed if prev.detected else False
         want = grabbed
-        if openness < self.cfg["grab_below"]:
+        if openness < self.grab_below:
             want = True
-        elif openness > self.cfg["release_above"]:
+        elif openness > self.release_above:
             want = False
         if want != grabbed:
             if want == self._pending:
                 self._pending_count += 1
             else:
                 self._pending, self._pending_count = want, 1
-            if self._pending_count >= self.cfg["debounce_frames"]:
+            if self._pending_count >= self.debounce_frames:
                 grabbed = want
                 self._pending = None
         else:

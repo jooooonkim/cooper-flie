@@ -3,10 +3,10 @@
 Close your hand (grab) to take control: the drone follows how far your hand
 moves from where you grabbed, so grabbing never makes it jump. Open your
 hand (let go) and the drone holds where it is. Losing the hand counts as
-letting go. The drone's speed is capped at flight.max_speed.
+letting go. The drone's speed is capped at MAX_SPEED.
 
-Image left/right and up/down drive the world axes set in config.yaml
-(mapping.horizontal / mapping.vertical, default x and z).
+Image left/right and up/down drive the world axes HORIZONTAL / VERTICAL
+below (default x and z).
 
     q     land and quit (camera window must have focus)
     Esc   EMERGENCY: stop motors immediately
@@ -23,12 +23,26 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import cv2
 import numpy as np
 
-from common.config import load_config
 from common.drone import open_drone
 from common.hand import HandTracker, draw_hand, put_lines
 from common.mapping import HandMapper
 from common.safety import Fence
 from common.util import Rate
+
+# ---- settings -------------------------------------------------------------
+URI = "radio://0/80/2M/E7E7E7E7E9"
+TAKEOFF_HEIGHT = 0.5     # m
+MAX_SPEED = 0.5          # m/s
+FENCE = Fence(x=(-1.0, 1.0), y=(-1.0, 1.0), z=(0.2, 1.4))   # m, Lighthouse frame
+STATE_TIMEOUT = 0.25     # s without a position estimate -> land
+
+CAMERA = 0
+GRAB_BELOW = 1.30        # tune with test/02_hand_tracking.py
+RELEASE_ABOVE = 1.60
+HORIZONTAL, VERTICAL = "x", "z"   # world axes driven by image left-right / up-down
+ACTIVE_U = (0.15, 0.85)  # part of the image that spans the whole fence
+ACTIVE_V = (0.15, 0.85)
+# ---------------------------------------------------------------------------
 
 AXES = "xyz"
 
@@ -36,28 +50,25 @@ AXES = "xyz"
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--sim", action="store_true", help="use the simulated drone")
-    parser.add_argument("--uri", help="override the radio URI from config.yaml")
+    parser.add_argument("--uri", default=URI, help=f"radio URI (default {URI})")
     args = parser.parse_args()
 
-    cfg = load_config()
-    fence = Fence(cfg["flight"]["fence"])
-    mapper = HandMapper(cfg["mapping"], fence)
-    max_step = cfg["flight"]["max_speed"]
-    timeout = cfg["flight"]["state_timeout"]
+    mapper = HandMapper(FENCE, HORIZONTAL, VERTICAL, active_u=ACTIVE_U, active_v=ACTIVE_V)
+    tracker = HandTracker(camera=CAMERA, grab_below=GRAB_BELOW, release_above=RELEASE_ABOVE)
 
-    with open_drone(cfg, sim=args.sim, uri=args.uri) as drone, HandTracker(cfg) as tracker:
-        drone.takeoff()
-        target = fence.clamp(drone.state.pos, margin=0.05)
+    with open_drone(args.uri, sim=args.sim) as drone, tracker:
+        drone.takeoff(TAKEOFF_HEIGHT)
+        target = FENCE.clamp(drone.state.pos, margin=0.05)
         goal = target.copy()
         grabbing = False
         hand_anchor = drone_anchor = None
 
         rate = Rate(50)
-        max_step *= rate.dt
+        max_step = MAX_SPEED * rate.dt
         last_id = -1
         kill = False
         while True:
-            if drone.state_age() > timeout:
+            if drone.state_age() > STATE_TIMEOUT:
                 print("Lost the position estimate, landing.")
                 break
 
@@ -76,7 +87,7 @@ def main():
                 goal = drone_anchor.copy()
                 for axis, value in world.items():
                     goal[AXES.index(axis)] += value - hand_anchor[axis]
-                goal = fence.clamp(goal, margin=0.05)
+                goal = FENCE.clamp(goal, margin=0.05)
 
             step = goal - target
             dist = np.linalg.norm(step)

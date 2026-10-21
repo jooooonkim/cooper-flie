@@ -9,7 +9,7 @@
 Hold a key to move at flight.max_speed; release it to hold position.
 Keys are read globally, so this works while the terminal has focus.
 
-    python test/01_keyboard_flight.py          # real drone (first URI in config.yaml)
+    python test/01_keyboard_flight.py          # real drone at URI below
     python test/01_keyboard_flight.py --sim    # no hardware
 """
 
@@ -24,10 +24,17 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import numpy as np
 from pynput import keyboard
 
-from common.config import load_config
 from common.drone import open_drone
 from common.safety import Fence
 from common.util import Rate
+
+# ---- settings -------------------------------------------------------------
+URI = "radio://0/80/2M/E7E7E7E7E9"   # cfclient: Connect > Configure 2.x
+TAKEOFF_HEIGHT = 0.5                 # m
+SPEED = 0.5                          # m/s while a key is held
+FENCE = Fence(x=(-1.0, 1.0), y=(-1.0, 1.0), z=(0.2, 1.4))   # m, Lighthouse frame
+STATE_TIMEOUT = 0.25                 # s without a position estimate -> land
+# ---------------------------------------------------------------------------
 
 DIRECTIONS = {
     "w": (1, 0, 0), "s": (-1, 0, 0),
@@ -39,13 +46,8 @@ DIRECTIONS = {
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--sim", action="store_true", help="use the simulated drone")
-    parser.add_argument("--uri", help="override the radio URI from config.yaml")
+    parser.add_argument("--uri", default=URI, help=f"radio URI (default {URI})")
     args = parser.parse_args()
-
-    cfg = load_config()
-    fence = Fence(cfg["flight"]["fence"])
-    speed = cfg["flight"]["max_speed"]
-    timeout = cfg["flight"]["state_timeout"]
 
     held = set()
     quit_ = threading.Event()
@@ -70,23 +72,23 @@ def main():
         if ch is not None:
             held.discard(ch.lower())
 
-    with open_drone(cfg, sim=args.sim, uri=args.uri) as drone, \
+    with open_drone(args.uri, sim=args.sim) as drone, \
             keyboard.Listener(on_press=on_press, on_release=on_release):
         print("Taking off. w/a/s/d move, o/p up/down, q land, Esc kill.")
-        drone.takeoff()
-        target = fence.clamp(drone.state.pos, margin=0.05)
+        drone.takeoff(TAKEOFF_HEIGHT)
+        target = FENCE.clamp(drone.state.pos, margin=0.05)
 
         rate = Rate(50)
         last_print = 0.0
         while not quit_.is_set():
-            if drone.state_age() > timeout:
+            if drone.state_age() > STATE_TIMEOUT:
                 print("\nLost the position estimate, landing.")
                 break
 
             direction = np.sum([DIRECTIONS[k] for k in list(held)] or [(0, 0, 0)], axis=0)
             if np.any(direction):
                 direction = direction / np.linalg.norm(direction)
-            target = fence.clamp(target + direction * speed * rate.dt, margin=0.05)
+            target = FENCE.clamp(target + direction * SPEED * rate.dt, margin=0.05)
             drone.position_setpoint(*target, 0.0)
 
             now = time.monotonic()

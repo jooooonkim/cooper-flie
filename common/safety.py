@@ -2,11 +2,14 @@ import numpy as np
 
 
 class Fence:
-    """Axis-aligned box in the world frame that the drone must stay inside."""
+    """Axis-aligned box in the world frame that the drone must stay inside.
 
-    def __init__(self, fence_cfg):
-        self.lo = np.array([fence_cfg[a][0] for a in "xyz"], dtype=float)
-        self.hi = np.array([fence_cfg[a][1] for a in "xyz"], dtype=float)
+        fence = Fence(x=(-1.0, 1.0), y=(-1.0, 1.0), z=(0.2, 1.4))
+    """
+
+    def __init__(self, x, y, z):
+        self.lo = np.array([x[0], y[0], z[0]], dtype=float)
+        self.hi = np.array([x[1], y[1], z[1]], dtype=float)
 
     def contains(self, p, slack=0.0):
         p = np.asarray(p, dtype=float)

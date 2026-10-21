@@ -3,7 +3,7 @@ import math
 import time
 from datetime import datetime
 
-from .config import LOG_DIR
+from .paths import LOG_DIR
 
 
 class Rate:

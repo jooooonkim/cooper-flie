@@ -2,7 +2,7 @@
 
 Both classes expose the same methods, so every script can run with --sim:
 
-    with open_drone(cfg, sim=args.sim) as drone:
+    with open_drone(URI, sim=args.sim) as drone:
         drone.takeoff()
         drone.position_setpoint(x, y, z)          # streamed, ~50 Hz
         drone.attitude_setpoint(roll, pitch, yawrate, z)
@@ -19,7 +19,7 @@ from dataclasses import dataclass, replace
 
 import numpy as np
 
-from .config import CACHE_DIR
+from .paths import CACHE_DIR
 
 G = 9.81
 
@@ -40,16 +40,20 @@ class State:
         return np.array([self.x, self.y, self.z])
 
 
-def open_drone(cfg, sim=False, uri=None):
+# Physical tilt -> command sign, see demos/single_mass_spring_damper/calibrate_signs.py.
+DEFAULT_SIGNS = {"pitch": -1, "roll": -1, "yaw": 1}
+
+
+def open_drone(uri, sim=False, signs=None):
+    """Real Crazyflie at `uri`, or a SimDrone using the given attitude signs."""
     if sim:
-        return SimDrone(cfg)
-    return Drone(uri or cfg["drones"][0]["uri"], cfg)
+        return SimDrone(signs)
+    return Drone(uri)
 
 
 class Drone:
-    def __init__(self, uri, cfg):
+    def __init__(self, uri):
         self.uri = uri
-        self.cfg = cfg
         self.cf = None
         self.flying = False
         self._scf = None
@@ -130,8 +134,7 @@ class Drone:
 
     # -- high-level commands (blocking) -------------------------------------
 
-    def takeoff(self, height=None, duration=2.0):
-        height = height or self.cfg["flight"]["takeoff_height"]
+    def takeoff(self, height=0.5, duration=2.0):
         self.cf.high_level_commander.takeoff(height, duration)
         self.flying = True
         time.sleep(duration + 0.3)
@@ -177,8 +180,8 @@ class SimDrone:
 
     Position commands track like a critically damped second-order system.
     Attitude commands tilt the thrust vector with a short lag, a = g*tan(tilt),
-    plus linear air drag, using the sign conventions in config.yaml so the
-    same controller code runs unchanged on the real drone.
+    plus linear air drag. `signs` are the same command signs the script
+    uses, so the controller code runs unchanged on the real drone.
     """
 
     RATE = 200.0
@@ -187,10 +190,9 @@ class SimDrone:
     TAU_ATT = 0.06  # s, attitude response lag
     DRAG = 0.25  # 1/s, linear drag
 
-    def __init__(self, cfg):
-        self.cfg = cfg
+    def __init__(self, signs=None):
         self.flying = False
-        self._signs = cfg["attitude"]
+        self._signs = dict(signs or DEFAULT_SIGNS)
         self._lock = threading.Lock()
         self._p = np.zeros(3)
         self._v = np.zeros(3)
@@ -278,8 +280,7 @@ class SimDrone:
             self._target = np.array([x, y, z], dtype=float)
             self._target_yaw = yaw
 
-    def takeoff(self, height=None, duration=2.0):
-        height = height or self.cfg["flight"]["takeoff_height"]
+    def takeoff(self, height=0.5, duration=2.0):
         s = self.state
         self._set_target(s.x, s.y, height)
         self.flying = True

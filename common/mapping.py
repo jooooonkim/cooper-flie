@@ -4,20 +4,23 @@ import numpy as np
 class HandMapper:
     """Maps normalized image coordinates (u right, v down, 0..1) to world axes.
 
-    The active part of the image (mapping.active_u / active_v) is stretched
-    over the fence, minus a margin, so the hand reaches every wall without
-    leaving the camera's view.
+    The active part of the image (active_u / active_v) is stretched over the
+    fence, minus a margin, so the hand reaches every wall without leaving the
+    camera's view.
+
+        horizontal / vertical   world axis driven by image left-right / up-down
+        invert_horizontal       True if image-right should be world-negative
     """
 
-    def __init__(self, mapping_cfg, fence):
-        self.h_axis = mapping_cfg["horizontal"]
-        self.v_axis = mapping_cfg["vertical"]
-        self.invert_h = mapping_cfg.get("invert_horizontal", False)
-        self.u_lo, self.u_hi = mapping_cfg["active_u"]
-        self.v_lo, self.v_hi = mapping_cfg["active_v"]
-        margin = mapping_cfg.get("fence_margin", 0.1)
-        self.h_range = fence.range(self.h_axis, margin)
-        self.v_range = fence.range(self.v_axis, margin)
+    def __init__(self, fence, horizontal="x", vertical="z", invert_horizontal=False,
+                 active_u=(0.15, 0.85), active_v=(0.15, 0.85), margin=0.1):
+        self.h_axis = horizontal
+        self.v_axis = vertical
+        self.invert_h = invert_horizontal
+        self.u_lo, self.u_hi = active_u
+        self.v_lo, self.v_hi = active_v
+        self.h_range = fence.range(horizontal, margin)
+        self.v_range = fence.range(vertical, margin)
 
     def _s(self, u):
         s = np.clip((u - self.u_lo) / (self.u_hi - self.u_lo), 0.0, 1.0)
