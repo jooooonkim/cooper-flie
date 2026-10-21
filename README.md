@@ -4,6 +4,7 @@ Dynamic systems flown by Crazyflie Drones @ Cooper Union Dynamics and Controls L
 Webcam hand tracking for interaction. Lighthouse positioning.
 
 ```
+setup/         drone + cfclient + radio + lighthouse setup, start here
 common/        shared code: drone wrapper (+ simulated drone), hand tracker, mapping, safety
 test/          bring-up scripts, run in order
 demos/         dynamic-system demos
@@ -19,7 +20,8 @@ pip install -r requirements.txt
 ```
 
 The hand-tracking model (`models/hand_landmarker.task`, about 8 MB) downloads
-on first use.
+on first use. For the drone, radio, cfclient and lighthouse side see
+`setup/README.md`.
 
 Each script keeps its own settings in a block at the top (radio URI, fence,
 gains, hand thresholds), so different scripts can use different values.
