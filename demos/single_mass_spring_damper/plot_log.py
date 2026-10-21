@@ -1,11 +1,8 @@
-"""Plot a msd_pitch.py run against the ideal mass-spring-damper.
+"""plot a msd_pitch run vs the ideal msd
 
-Every stretch where the mass is free (not grabbed, k and b unchanged) is
-re-simulated from the drone's measured state at the start of that stretch,
-so you can see how far the real drone departs from the ideal model.
+each free stretch gets re-simulated from the measured state at its start
 
-    python demos/single_mass_spring_damper/plot_log.py            # newest log
-    python demos/single_mass_spring_damper/plot_log.py logs/single_msd_....csv
+python demos/single_mass_spring_damper/plot_log.py   (newest log, or pass a csv)
 """
 
 import csv
@@ -31,7 +28,7 @@ def load(path):
 
 
 def ideal(t, x_start, v_start, m, k, b, x0):
-    """RK4 of m x'' = -k (x - x0) - b x' on the logged time stamps."""
+    # rk4 of m x'' = -k (x - x0) - b x' on the log timestamps
     def f(state):
         x, v = state
         return np.array([v, (-k * (x - x0) - b * v) / m])
@@ -51,7 +48,7 @@ def ideal(t, x_start, v_start, m, k, b, x0):
 
 
 def free_segments(d):
-    """Index ranges where the mass is free and the parameters are constant."""
+    # stretches where its not grabbed and k, b didnt change
     key = np.stack([d["grabbed"], d["m"], d["k"], d["b"], d["x0"]], axis=1)
     breaks = np.flatnonzero(np.any(np.diff(key, axis=0) != 0, axis=1)) + 1
     for seg in np.split(np.arange(len(d["t"])), breaks):

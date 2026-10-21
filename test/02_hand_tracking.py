@@ -1,11 +1,7 @@
-"""Test 2: hand tracking and grab detection only. No drone.
+"""hand tracking test, no drone
 
-Shows the palm point (outlined = open, filled = grabbed), the openness ratio
-against the grab/release thresholds, and the world position the hand maps
-to. Tune the settings below here, then copy the values into the scripts
-that fly.
-
-    q or Esc   quit
+palm dot outlined = open, filled = grabbed. bar on the right is openness vs thresholds.
+tune here then copy the numbers into the flying scripts. q/esc to quit
 """
 
 import sys
@@ -19,20 +15,18 @@ from common.hand import HandTracker, draw_hand, put_lines
 from common.mapping import HandMapper
 from common.safety import Fence
 
-# ---- settings -------------------------------------------------------------
+# settings
 CAMERA = 0
-GRAB_BELOW = 1.30        # openness below this -> grabbed (fist)
-RELEASE_ABOVE = 1.60     # openness above this -> released (open hand)
+GRAB_BELOW = 1.30        # below -> grabbed
+RELEASE_ABOVE = 1.60     # above -> open
 DEBOUNCE_FRAMES = 3
-FENCE = Fence(x=(-1.0, 1.0), y=(-1.0, 1.0), z=(0.2, 1.4))   # only for the mapping readout
-HORIZONTAL, VERTICAL = "x", "z"   # world axes driven by image left-right / up-down
-ACTIVE_U = (0.15, 0.85)  # part of the image width that spans the fence
+FENCE = Fence(x=(-1.0, 1.0), y=(-1.0, 1.0), z=(0.2, 1.4))   # m, just for the readout
+HORIZONTAL, VERTICAL = "x", "z"   # image left-right / up-down
+ACTIVE_U = (0.15, 0.85)  # part of the image that covers the fence
 ACTIVE_V = (0.15, 0.85)
-# ---------------------------------------------------------------------------
 
 
 def draw_openness_bar(img, hand):
-    """Vertical bar: openness value with the two thresholds marked."""
     h, w = img.shape[:2]
     x0, y0, y1 = w - 40, 40, h - 40
     lo, hi = 0.8, 2.2

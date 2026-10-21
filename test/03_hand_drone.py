@@ -1,17 +1,9 @@
-"""Test 3: move the drone with your hand.
+"""move the drone with your hand
 
-Close your hand (grab) to take control: the drone follows how far your hand
-moves from where you grabbed, so grabbing never makes it jump. Open your
-hand (let go) and the drone holds where it is. Losing the hand counts as
-letting go. The drone's speed is capped at MAX_SPEED.
+grab = drone follows your hand (relative to where you grabbed so it doesnt jump)
+let go / lose the hand = it holds. q land, esc kill (camera window focused)
 
-Image left/right and up/down drive the world axes HORIZONTAL / VERTICAL
-below (default x and z).
-
-    q     land and quit (camera window must have focus)
-    Esc   EMERGENCY: stop motors immediately
-
-    python test/03_hand_drone.py [--sim]
+python test/03_hand_drone.py [--sim]
 """
 
 import argparse
@@ -29,20 +21,19 @@ from common.mapping import HandMapper
 from common.safety import Fence
 from common.util import Rate
 
-# ---- settings -------------------------------------------------------------
+# settings
 URI = "radio://0/80/2M/E7E7E7E7E9"
 TAKEOFF_HEIGHT = 0.5     # m
 MAX_SPEED = 0.5          # m/s
-FENCE = Fence(x=(-1.0, 1.0), y=(-1.0, 1.0), z=(0.2, 1.4))   # m, Lighthouse frame
-STATE_TIMEOUT = 0.25     # s without a position estimate -> land
+FENCE = Fence(x=(-1.0, 1.0), y=(-1.0, 1.0), z=(0.2, 1.4))   # m
+STATE_TIMEOUT = 0.25     # s with no position -> land
 
 CAMERA = 0
-GRAB_BELOW = 1.30        # tune with test/02_hand_tracking.py
+GRAB_BELOW = 1.30        # from 02_hand_tracking
 RELEASE_ABOVE = 1.60
-HORIZONTAL, VERTICAL = "x", "z"   # world axes driven by image left-right / up-down
-ACTIVE_U = (0.15, 0.85)  # part of the image that spans the whole fence
+HORIZONTAL, VERTICAL = "x", "z"   # image left-right / up-down
+ACTIVE_U = (0.15, 0.85)
 ACTIVE_V = (0.15, 0.85)
-# ---------------------------------------------------------------------------
 
 AXES = "xyz"
 
@@ -80,7 +71,7 @@ def main():
                 drone_anchor = target.copy()
             elif not hand.grabbed and grabbing:
                 grabbing = False
-                goal = target.copy()  # let go: hold here
+                goal = target.copy()  # let go, hold here
 
             if grabbing:
                 world = mapper.to_world(hand.u, hand.v)

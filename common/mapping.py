@@ -2,15 +2,7 @@ import numpy as np
 
 
 class HandMapper:
-    """Maps normalized image coordinates (u right, v down, 0..1) to world axes.
-
-    The active part of the image (active_u / active_v) is stretched over the
-    fence, minus a margin, so the hand reaches every wall without leaving the
-    camera's view.
-
-        horizontal / vertical   world axis driven by image left-right / up-down
-        invert_horizontal       True if image-right should be world-negative
-    """
+    # image u, v (0..1) -> world axes. active_u/v region gets stretched over the fence
 
     def __init__(self, fence, horizontal="x", vertical="z", invert_horizontal=False,
                  active_u=(0.15, 0.85), active_v=(0.15, 0.85), margin=0.1):
@@ -27,11 +19,11 @@ class HandMapper:
         return 1.0 - s if self.invert_h else s
 
     def _t(self, v):
-        # Image top (small v) maps to the high end of the vertical axis.
+        # top of image = high end
         return 1.0 - np.clip((v - self.v_lo) / (self.v_hi - self.v_lo), 0.0, 1.0)
 
     def to_world(self, u, v):
-        """Returns {axis: value} for the two mapped axes."""
+        # returns {axis: value}
         h_lo, h_hi = self.h_range
         v_lo, v_hi = self.v_range
         return {
@@ -40,7 +32,7 @@ class HandMapper:
         }
 
     def velocity_to_world(self, du, dv):
-        """Image-space velocity (per second) to world velocity, ignoring clamping."""
+        # image vel -> m/s (ignores clamping)
         h_scale = (self.h_range[1] - self.h_range[0]) / (self.u_hi - self.u_lo)
         v_scale = (self.v_range[1] - self.v_range[0]) / (self.v_hi - self.v_lo)
         return {
@@ -49,7 +41,7 @@ class HandMapper:
         }
 
     def h_to_u(self, value):
-        """World value on the horizontal axis back to image u, for drawing."""
+        # world -> image u, for drawing
         h_lo, h_hi = self.h_range
         s = (value - h_lo) / (h_hi - h_lo)
         if self.invert_h:
@@ -57,7 +49,7 @@ class HandMapper:
         return self.u_lo + s * (self.u_hi - self.u_lo)
 
     def v_to_v(self, value):
-        """World value on the vertical axis back to image v, for drawing."""
+        # world -> image v, for drawing
         v_lo, v_hi = self.v_range
         t = (value - v_lo) / (v_hi - v_lo)
         return self.v_lo + (1.0 - t) * (self.v_hi - self.v_lo)

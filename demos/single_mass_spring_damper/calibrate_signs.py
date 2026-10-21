@@ -1,19 +1,10 @@
-"""Measure which way pitch, roll and yaw-rate commands move the drone.
+"""figure out which way pitch / roll / yawrate commands actually move the drone
 
-The zdistance setpoint passes roll/pitch/yawrate to the firmware unchanged,
-and the firmware's sign conventions are not obvious (pitch in particular is
-historically inverted). This script flies short, gentle steps and prints the
-signs to copy into the settings block of msd_pitch.py (and any other
-attitude-controlled demo).
+pitch sign on the cf is weird (inverted) so just measure it.
++4 deg pitch 0.4 s -> vx?, +4 deg roll 0.4 s -> vy?, +30 deg/s yaw 1 s -> yaw?
+each step moves it ~10-20 cm, keep ~1 m clear. copy the printed signs into msd_pitch.py
 
-Sequence, each step starting from a position hold at the takeoff point:
-    +4 deg pitch for 0.4 s   -> does vx go up or down?
-    +4 deg roll  for 0.4 s   -> does vy go up or down?
-    +30 deg/s yaw rate, 1 s  -> does yaw go up or down?
-Each step moves the drone roughly 10-20 cm. Leave about 1 m clear around it.
-
-    Ctrl+C   land
-    python demos/single_mass_spring_damper/calibrate_signs.py [--sim]
+python demos/single_mass_spring_damper/calibrate_signs.py [--sim]
 """
 
 import argparse
@@ -27,16 +18,15 @@ from common.drone import open_drone
 from common.safety import Fence
 from common.util import Rate
 
-# ---- settings -------------------------------------------------------------
+# settings
 URI = "radio://0/80/2M/E7E7E7E7E9"
 HEIGHT = 0.7             # m
-FENCE = Fence(x=(-1.0, 1.0), y=(-1.0, 1.0), z=(0.2, 1.4))   # m, Lighthouse frame
+FENCE = Fence(x=(-1.0, 1.0), y=(-1.0, 1.0), z=(0.2, 1.4))   # m
 
 TILT = 4.0               # deg
 TILT_TIME = 0.4          # s
 YAWRATE = 30.0           # deg/s
 YAW_TIME = 1.0           # s
-# ---------------------------------------------------------------------------
 
 
 def hold(drone, center, seconds, rate):
@@ -47,7 +37,7 @@ def hold(drone, center, seconds, rate):
 
 
 def step(drone, seconds, rate, roll=0.0, pitch=0.0, yawrate=0.0):
-    """Stream one attitude command; returns (start state, end state)."""
+    # returns state before and after
     start = drone.state
     end = time.monotonic() + seconds
     while time.monotonic() < end:

@@ -1,15 +1,7 @@
-"""Crazyflie wrapper with a matching simulated drone.
+"""crazyflie wrapper + sim drone with the same methods, so everything runs with --sim
 
-Both classes expose the same methods, so every script can run with --sim:
-
-    with open_drone(URI, sim=args.sim) as drone:
-        drone.takeoff()
-        drone.position_setpoint(x, y, z)          # streamed, ~50 Hz
-        drone.attitude_setpoint(roll, pitch, yawrate, z)
-    # leaving the block lands the drone if it is still flying
-
-Streaming setpoints must keep arriving: the firmware levels the drone after
-about 0.5 s without one and cuts the motors after about 2 s.
+setpoints have to keep streaming (~50 Hz). firmware levels out after ~0.5 s
+without one and cuts motors after ~2 s. leaving the with block lands it.
 """
 
 import math
@@ -26,7 +18,7 @@ G = 9.81
 
 @dataclass
 class State:
-    t: float = 0.0  # host time.monotonic() of the last update
+    t: float = 0.0  # host time of last update
     x: float = 0.0
     y: float = 0.0
     z: float = 0.0
@@ -40,12 +32,11 @@ class State:
         return np.array([self.x, self.y, self.z])
 
 
-# Physical tilt -> command sign, see demos/single_mass_spring_damper/calibrate_signs.py.
+# tilt -> command sign, get these from calibrate_signs.py
 DEFAULT_SIGNS = {"pitch": -1, "roll": -1, "yaw": 1}
 
 
 def open_drone(uri, sim=False, signs=None):
-    """Real Crazyflie at `uri`, or a SimDrone using the given attitude signs."""
     if sim:
         return SimDrone(signs)
     return Drone(uri)
@@ -61,8 +52,6 @@ class Drone:
         self._streaming = False
         self._state = State()
         self._lock = threading.Lock()
-
-    # -- connection -------------------------------------------------------
 
     def __enter__(self):
         import cflib.crtp
@@ -96,7 +85,7 @@ class Drone:
     def _start_logging(self):
         from cflib.crazyflie.log import LogConfig
 
-        # A log block holds at most 26 bytes, so position and velocity are split.
+        # max 26 bytes per log block so pos and vel are split
         pos = LogConfig(name="pos", period_in_ms=10)
         for var in ("x", "y", "z", "yaw"):
             pos.add_variable(f"stateEstimate.{var}", "float")
@@ -122,8 +111,6 @@ class Drone:
                 raise RuntimeError("No state estimate from the drone. Is the Lighthouse deck working?")
             time.sleep(0.05)
 
-    # -- state ------------------------------------------------------------
-
     @property
     def state(self):
         with self._lock:
@@ -132,7 +119,7 @@ class Drone:
     def state_age(self):
         return time.monotonic() - self.state.t
 
-    # -- high-level commands (blocking) -------------------------------------
+    # high level commands, these block
 
     def takeoff(self, height=0.5, duration=2.0):
         self.cf.high_level_commander.takeoff(height, duration)
@@ -153,42 +140,40 @@ class Drone:
         self.cf.supervisor.send_arming_request(False)
 
     def kill(self):
-        """Stop the motors immediately. The drone falls."""
+        # motors off right away, it falls
         self.cf.commander.send_stop_setpoint()
         self.flying = False
 
-    # -- streaming setpoints (call every loop) --------------------------------
+    # streaming setpoints, call every loop
 
     def position_setpoint(self, x, y, z, yaw=0.0):
         self.cf.commander.send_position_setpoint(x, y, z, yaw)
         self._streaming = True
 
     def attitude_setpoint(self, roll, pitch, yawrate, z):
-        """roll/pitch in deg, yawrate in deg/s, z = absolute height in m."""
+        # roll/pitch deg, yawrate deg/s, z height m
         self.cf.commander.send_zdistance_setpoint(roll, pitch, yawrate, z)
         self._streaming = True
 
     def stop_streaming(self):
-        """Hand control back to the high-level commander."""
+        # give control back to the high level commander
         if self._streaming:
             self.cf.commander.send_notify_setpoint_stop()
             self._streaming = False
 
 
 class SimDrone:
-    """Point-mass stand-in for a Crazyflie, integrated at 200 Hz in a thread.
+    """point mass stand-in for the cf, 200 Hz thread
 
-    Position commands track like a critically damped second-order system.
-    Attitude commands tilt the thrust vector with a short lag, a = g*tan(tilt),
-    plus linear air drag. `signs` are the same command signs the script
-    uses, so the controller code runs unchanged on the real drone.
+    position mode = critically damped 2nd order. attitude mode = a = g*tan(tilt)
+    with a small lag + linear drag. uses the same signs as the script
     """
 
     RATE = 200.0
-    WN_POS = 3.0  # rad/s, position-mode bandwidth
-    MAX_ACC = 4.0  # m/s^2 in position mode
-    TAU_ATT = 0.06  # s, attitude response lag
-    DRAG = 0.25  # 1/s, linear drag
+    WN_POS = 3.0  # rad/s
+    MAX_ACC = 4.0  # m/s^2
+    TAU_ATT = 0.06  # s, tilt lag
+    DRAG = 0.25  # 1/s
 
     def __init__(self, signs=None):
         self.flying = False
@@ -197,7 +182,7 @@ class SimDrone:
         self._p = np.zeros(3)
         self._v = np.zeros(3)
         self._yaw = 0.0
-        self._tilt = np.zeros(2)  # physical (pitch, roll) tilt, deg
+        self._tilt = np.zeros(2)  # actual pitch, roll (deg)
         self._mode = "idle"
         self._target = np.zeros(3)
         self._target_yaw = 0.0
@@ -246,7 +231,7 @@ class SimDrone:
             self._tilt[:] = 0.0
         else:  # attitude
             roll, pitch, yawrate, z = self._att_cmd
-            # Undo the command sign to get the physical tilt the real drone would have.
+            # undo the command sign -> actual tilt
             phys = np.array([self._signs["pitch"] * pitch, self._signs["roll"] * roll])
             self._tilt += (phys - self._tilt) * min(1.0, dt / self.TAU_ATT)
             a_body = G * np.tan(np.radians(self._tilt))  # (forward, left)

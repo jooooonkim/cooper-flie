@@ -1,17 +1,9 @@
-"""Webcam hand tracking with grab detection, running in its own thread.
+"""webcam hand tracking + grab detection in its own thread
 
-    with HandTracker(camera=0, grab_below=1.3, release_above=1.6) as tracker:
-        frame_id, frame, hand = tracker.latest()
+u, v are normalized 0..1 (u left->right, v top->bottom)
 
-`frame` is the (mirrored) BGR image the landmarks were found in, and `hand`
-is a HandState. Coordinates are normalized: u = 0..1 left to right,
-v = 0..1 top to bottom.
-
-Grab detection uses an "openness" ratio: the mean distance from the wrist to
-each fingertip divided by the wrist-to-knuckle distance of the same finger.
-An open hand is around 1.8-2.0, a fist around 1.0. Two thresholds with a
-gap between them (hysteresis) plus a few frames of debounce keep the state
-from flickering at the boundary.
+grab uses openness = mean(wrist->tip / wrist->knuckle) over 4 fingers.
+open hand ~1.8-2.0, fist ~1.0. two thresholds + debounce so it doesnt flicker
 """
 
 import threading
@@ -31,22 +23,22 @@ MODEL_URL = (
     "hand_landmarker/float16/latest/hand_landmarker.task"
 )
 WRIST = 0
-PALM = 9  # middle-finger knuckle: stays put when the hand closes
+PALM = 9  # middle knuckle, doesnt move much when you make a fist
 TIPS = (8, 12, 16, 20)
 KNUCKLES = (5, 9, 13, 17)
 
 
 @dataclass
 class HandState:
-    t: float = 0.0  # time.monotonic() of the frame
+    t: float = 0.0
     detected: bool = False
     grabbed: bool = False
-    u: float = 0.5  # filtered palm position
+    u: float = 0.5  # filtered palm pos
     v: float = 0.5
-    du: float = 0.0  # filtered palm velocity, per second
+    du: float = 0.0  # palm vel, 1/s
     dv: float = 0.0
     openness: float = 0.0
-    landmarks: tuple = ()  # 21 raw (u, v) points, for drawing
+    landmarks: tuple = ()  # raw 21 pts for drawing
     fps: float = 0.0
 
 
@@ -59,7 +51,7 @@ def ensure_model(path):
 
 
 def openness_ratio(pts, width, height):
-    p = np.array(pts) * [width, height]  # pixels, so x and y share a scale
+    p = np.array(pts) * [width, height]  # to pixels so x and y are same scale
     wrist = p[WRIST]
     tips = np.linalg.norm(p[list(TIPS)] - wrist, axis=1)
     knuckles = np.linalg.norm(p[list(KNUCKLES)] - wrist, axis=1)
@@ -67,15 +59,8 @@ def openness_ratio(pts, width, height):
 
 
 class HandTracker:
-    """
-    camera, width, height, mirror   webcam index and capture size; mirror so
-                                    moving your hand right moves it right on screen
-    grab_below, release_above       openness thresholds (see the module docstring)
-    debounce_frames                 frames a new grab state must persist
-    lost_timeout                    s without a hand before it counts as released
-    filter_min_cutoff, filter_beta  One Euro smoothing: lower cutoff = smoother
-                                    when still, higher beta = less lag when moving
-    """
+    # lost_timeout: s without a hand before it counts as let go
+    # filter: lower min_cutoff = smoother, higher beta = less lag
 
     def __init__(self, camera=0, width=640, height=480, mirror=True,
                  grab_below=1.30, release_above=1.60, debounce_frames=3, lost_timeout=0.3,
@@ -95,7 +80,7 @@ class HandTracker:
         self._state = HandState()
         self._fu = OneEuroFilter(filter_min_cutoff, filter_beta)
         self._fv = OneEuroFilter(filter_min_cutoff, filter_beta)
-        self._pending = None  # grab state waiting out the debounce
+        self._pending = None  # grab state waiting on debounce
         self._pending_count = 0
         self._last_seen = 0.0
 
@@ -133,7 +118,7 @@ class HandTracker:
         self._landmarker.close()
 
     def latest(self):
-        """(frame_id, frame, HandState). frame is None until the first image arrives."""
+        # frame is None until the first image comes in
         with self._lock:
             return self._frame_id, self._frame, replace(self._state)
 
@@ -154,7 +139,7 @@ class HandTracker:
             fps = 0.9 * fps + 0.1 / max(t - prev_t, 1e-3)
             prev_t = t
 
-            ts_ms = max(int(t * 1000), last_ms + 1)  # must strictly increase
+            ts_ms = max(int(t * 1000), last_ms + 1)  # has to keep increasing
             last_ms = ts_ms
             rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             result = self._landmarker.detect_for_video(
@@ -175,7 +160,7 @@ class HandTracker:
                 self._fv.reset()
                 self._pending = None
                 return HandState(t=t)
-            return replace(prev, t=t, landmarks=())  # brief dropout: keep last state
+            return replace(prev, t=t, landmarks=())  # short dropout, keep last state
 
         self._last_seen = t
         pts = tuple((lm.x, lm.y) for lm in result.hand_landmarks[0])
@@ -206,7 +191,7 @@ class HandTracker:
 
 
 def draw_hand(img, hand):
-    """Draw the landmark skeleton and the palm point (filled when grabbed)."""
+    # palm dot is filled when grabbed
     from mediapipe.tasks.python.vision import HandLandmarksConnections
 
     h, w = img.shape[:2]
@@ -223,7 +208,7 @@ def draw_hand(img, hand):
 
 
 def put_lines(img, lines, origin=(10, 24), color=(255, 255, 255), scale=0.55):
-    """Text with a dark outline so it reads on any background."""
+    # outlined text so its readable on anything
     x, y = origin
     for line in lines:
         cv2.putText(img, line, (x, y), cv2.FONT_HERSHEY_SIMPLEX, scale, (0, 0, 0), 3, cv2.LINE_AA)

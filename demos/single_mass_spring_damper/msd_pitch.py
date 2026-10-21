@@ -1,29 +1,14 @@
-"""Single mass-spring-damper where the drone IS the mass.
+"""single msd, the drone is the mass
 
-The drone's measured position and velocity along x feed a virtual spring and
-damper. The resulting force sets an acceleration, and the acceleration is
-produced by tilting: a = g*tan(theta), roughly g*theta for small angles.
+F = -k (x - x0) - b vx (+ hand spring when grabbed), a = F/m, pitch = atan(a/g) ~ a/g
+height held onboard (zdistance), y held w/ roll, yaw held w/ yawrate.
+uses the measured x, vx so the drone's real inertia/drag is in the loop too
 
-    F     = -k (x - x0) - b vx  [+ hand spring while grabbed]
-    a     = F / m
-    pitch = atan(a / g), clamped to MAX_TILT_DEG
+grab to drag it along x, let go mid swing and it keeps going
+keys: +/- k, ]/[ b, q land, esc kill
 
-Height is held onboard by the zdistance setpoint, y by a PD loop on roll,
-and yaw by a proportional loop on yaw rate. Since the drone's real inertia
-and air drag are part of the loop, the motion you see is the virtual system
-plus the drone's own physics, not a replay of a simulation.
-
-Grab (close your hand) to attach a second virtual spring from your hand to
-the mass and drag it along x. Open your hand to release it mid-swing; it
-keeps its momentum.
-
-Keys (window focused):
-    + / -   stiffness k up / down       ] / [   damping b up / down
-    q       land                        Esc     EMERGENCY stop motors
-
-    python demos/single_mass_spring_damper/msd_pitch.py --sim
-    python demos/single_mass_spring_damper/msd_pitch.py --sim --headless --duration 15
-    python demos/single_mass_spring_damper/msd_pitch.py
+python demos/single_mass_spring_damper/msd_pitch.py --sim
+python demos/single_mass_spring_damper/msd_pitch.py --sim --headless --duration 15
 """
 
 import argparse
@@ -44,44 +29,40 @@ from common.mapping import HandMapper
 from common.safety import Fence
 from common.util import CsvLog, Rate
 
-# ---- settings -------------------------------------------------------------
+# settings
 URI = "radio://0/80/2M/E7E7E7E7E9"
 
-# Virtual system. wn = sqrt(K/M), zeta = B / (2 sqrt(K M)).
-M = 1.0                  # virtual mass, kg
-K = 3.0                  # spring stiffness, N/m      (+ / - keys change it live)
-B = 0.4                  # damping, N*s/m             (] / [ keys change it live)
-X0 = 0.0                 # spring rest position along x, m
-START_OFFSET = 0.0       # initial displacement from X0 after takeoff, m (--offset overrides)
-K_HAND = 8.0             # stiffness of the virtual spring from your hand to the mass, N/m
-B_HAND = 1.0             # damping of that hand spring, N*s/m
+# wn = sqrt(K/M), zeta = B / (2 sqrt(K M))
+M = 1.0                  # kg
+K = 3.0                  # N/m
+B = 0.4                  # N*s/m
+X0 = 0.0                 # rest position, m
+START_OFFSET = 0.0       # m from X0 at start (--offset overrides)
+K_HAND = 8.0             # hand spring, N/m
+B_HAND = 1.0             # N*s/m
 
-# Flight.
-HEIGHT = 0.7             # m, held onboard by the zdistance setpoint
-Y0 = 0.0                 # m, held by a PD loop on roll
-MAX_TILT_DEG = 12.0      # a = g*tan(theta) stays accurate below ~15 deg
-Y_KP, Y_KD = 4.0, 2.5    # y hold: m/s^2 per m, per m/s
-YAW_KP = 2.0             # yaw hold: deg/s per deg
+HEIGHT = 0.7             # m
+Y0 = 0.0                 # m
+MAX_TILT_DEG = 12.0      # small angle stuff breaks past ~15 deg
+Y_KP, Y_KD = 4.0, 2.5    # y hold
+YAW_KP = 2.0             # deg/s per deg
 MAX_YAWRATE = 60.0       # deg/s
 RATE_HZ = 50
 
-# Command signs from calibrate_signs.py. The demo refuses to fly until verified.
+# from calibrate_signs.py, wont fly until verified
 PITCH_SIGN = -1
 ROLL_SIGN = -1
 YAW_SIGN = 1
 SIGNS_VERIFIED = False
 
-# Safety.
-FENCE = Fence(x=(-1.0, 1.0), y=(-1.0, 1.0), z=(0.2, 1.4))   # m, Lighthouse frame
-STATE_TIMEOUT = 0.25     # s without a position estimate -> land
-MAX_YAW_ERROR = 25.0     # deg; land if yaw drifts further than this
+FENCE = Fence(x=(-1.0, 1.0), y=(-1.0, 1.0), z=(0.2, 1.4))   # m
+STATE_TIMEOUT = 0.25     # s with no position -> land
+MAX_YAW_ERROR = 25.0     # deg -> land
 
-# Hand tracking (tune with test/02_hand_tracking.py).
 CAMERA = 0
-GRAB_BELOW = 1.30
+GRAB_BELOW = 1.30        # from 02_hand_tracking
 RELEASE_ABOVE = 1.60
-ACTIVE_U = (0.15, 0.85)  # part of the image width that spans the fence along x
-# ---------------------------------------------------------------------------
+ACTIVE_U = (0.15, 0.85)
 
 SIGNS = {"pitch": PITCH_SIGN, "roll": ROLL_SIGN, "yaw": YAW_SIGN}
 LOG_FIELDS = ["t", "x", "y", "z", "vx", "vy", "yaw", "grabbed", "x_hand", "force", "ax_cmd",
@@ -93,7 +74,6 @@ def tilt_deg(accel, limit):
 
 
 def draw_scene(img, mapper, x, x_hand, grabbed):
-    """Wall, spring, damper and mass along the bottom of the image."""
     h, w = img.shape[:2]
     y = int(h * 0.82)
     to_px = lambda value: int(mapper.h_to_u(value) * w)
@@ -103,7 +83,7 @@ def draw_scene(img, mapper, x, x_hand, grabbed):
     half = 22
 
     cv2.line(img, (wall, y - 45), (wall, y + 45), (200, 200, 200), 3)
-    # Spring (zigzag) above the centerline, damper below.
+    # spring on top, damper below
     end = mass - half
     n = 12
     xs = np.linspace(wall, end, 2 * n + 1)
@@ -140,7 +120,7 @@ def main():
         sys.exit("Attitude signs are not verified. Run calibrate_signs.py, copy the printed "
                  "signs into this script, then set SIGNS_VERIFIED = True.")
 
-    k, b = K, B  # adjustable live
+    k, b = K, B  # can change these live
     mapper = HandMapper(FENCE, "x", "z", active_u=ACTIVE_U)
     use_camera = not (args.no_camera or args.headless)
     offset = START_OFFSET if args.offset is None else args.offset
@@ -180,7 +160,7 @@ def main():
             frame_id, frame, hand = tracker.latest() if use_camera else (0, None, HandState())
             grabbed = hand.detected and hand.grabbed
 
-            # Virtual physics on the measured state.
+            # virtual spring/damper on measured state
             force = -k * (s.x - X0) - b * s.vx
             x_hand = None
             if hand.detected:
@@ -191,7 +171,7 @@ def main():
             ax = force / M
             ay = -Y_KP * (s.y - Y0) - Y_KD * s.vy
 
-            # World-frame acceleration to body-frame tilt.
+            # world accel -> body tilt
             c, sn = math.cos(math.radians(s.yaw)), math.sin(math.radians(s.yaw))
             pitch = tilt_deg(c * ax + sn * ay, MAX_TILT_DEG)
             roll = tilt_deg(-sn * ax + c * ay, MAX_TILT_DEG)

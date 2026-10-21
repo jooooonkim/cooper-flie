@@ -1,16 +1,9 @@
-"""Test 1: fly one drone from the keyboard to check radio, positioning and flight.
+"""keyboard flight test (radio, positioning, flight)
 
-    w / s   forward / back   (+x / -x)
-    a / d   left / right     (+y / -y)
-    o / p   up / down        (+z / -z)
-    q       land and quit
-    Esc     EMERGENCY: stop motors immediately (the drone falls)
+w/s fwd/back, a/d left/right, o/p up/down, q land, esc kill (motors off)
+hold a key to move, let go and it holds. keys are global
 
-Hold a key to move at flight.max_speed; release it to hold position.
-Keys are read globally, so this works while the terminal has focus.
-
-    python test/01_keyboard_flight.py          # real drone at URI below
-    python test/01_keyboard_flight.py --sim    # no hardware
+python test/01_keyboard_flight.py [--sim]
 """
 
 import argparse
@@ -28,13 +21,12 @@ from common.drone import open_drone
 from common.safety import Fence
 from common.util import Rate
 
-# ---- settings -------------------------------------------------------------
-URI = "radio://0/80/2M/E7E7E7E7E9"   # cfclient: Connect > Configure 2.x
+# settings
+URI = "radio://0/80/2M/E7E7E7E7E9"   # check in cfclient
 TAKEOFF_HEIGHT = 0.5                 # m
-SPEED = 0.5                          # m/s while a key is held
-FENCE = Fence(x=(-1.0, 1.0), y=(-1.0, 1.0), z=(0.2, 1.4))   # m, Lighthouse frame
-STATE_TIMEOUT = 0.25                 # s without a position estimate -> land
-# ---------------------------------------------------------------------------
+SPEED = 0.5                          # m/s
+FENCE = Fence(x=(-1.0, 1.0), y=(-1.0, 1.0), z=(0.2, 1.4))   # m
+STATE_TIMEOUT = 0.25                 # s with no position -> land
 
 DIRECTIONS = {
     "w": (1, 0, 0), "s": (-1, 0, 0),

@@ -2,10 +2,7 @@ import numpy as np
 
 
 class Fence:
-    """Axis-aligned box in the world frame that the drone must stay inside.
-
-        fence = Fence(x=(-1.0, 1.0), y=(-1.0, 1.0), z=(0.2, 1.4))
-    """
+    # box the drone has to stay in, world frame
 
     def __init__(self, x, y, z):
         self.lo = np.array([x[0], y[0], z[0]], dtype=float)
