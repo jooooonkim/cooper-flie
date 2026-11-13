@@ -1,14 +1,8 @@
-"""single msd, the drone is the mass
+"""msd with hand, drone is the mass. pitch = atan(F/m/g)
 
-F = -k (x - x0) - b vx (+ hand spring when grabbed), a = F/m, pitch = atan(a/g) ~ a/g
-height held onboard (zdistance), y held w/ roll, yaw held w/ yawrate.
-uses the measured x, vx so the drone's real inertia/drag is in the loop too
-
-grab to drag it along x, let go mid swing and it keeps going
 keys: +/- k, ]/[ b, q land, esc kill
 
 python demos/single_mass_spring_damper/msd_pitch.py --sim
-python demos/single_mass_spring_damper/msd_pitch.py --sim --headless --duration 15
 """
 
 import argparse
@@ -37,27 +31,27 @@ M = 1.0                  # kg
 K = 3.0                  # N/m
 B = 0.4                  # N*s/m
 X0 = 0.0                 # rest position, m
-START_OFFSET = 0.0       # m from X0 at start (--offset overrides)
+START_OFFSET = 0.0       # start offset, m
 K_HAND = 8.0             # hand spring, N/m
 B_HAND = 1.0             # N*s/m
 
 HEIGHT = 0.7             # m
 Y0 = 0.0                 # m
-MAX_TILT_DEG = 12.0      # small angle stuff breaks past ~15 deg
+MAX_TILT_DEG = 12.0      # deg
 Y_KP, Y_KD = 4.0, 2.5    # y hold
 YAW_KP = 2.0             # deg/s per deg
 MAX_YAWRATE = 60.0       # deg/s
 RATE_HZ = 50
 
-# from calibrate_signs.py, wont fly until verified
+# from calibrate_signs.py
 PITCH_SIGN = -1
 ROLL_SIGN = -1
 YAW_SIGN = 1
 SIGNS_VERIFIED = False
 
 FENCE = Fence(x=(-1.0, 1.0), y=(-1.0, 1.0), z=(0.2, 1.4))   # m
-STATE_TIMEOUT = 0.25     # s with no position -> land
-MAX_YAW_ERROR = 25.0     # deg -> land
+STATE_TIMEOUT = 0.25     # s
+MAX_YAW_ERROR = 25.0     # deg
 
 CAMERA = 0
 GRAB_BELOW = 1.30        # from 02_hand_tracking
@@ -83,7 +77,6 @@ def draw_scene(img, mapper, x, x_hand, grabbed):
     half = 22
 
     cv2.line(img, (wall, y - 45), (wall, y + 45), (200, 200, 200), 3)
-    # spring on top, damper below
     end = mass - half
     n = 12
     xs = np.linspace(wall, end, 2 * n + 1)
@@ -120,7 +113,7 @@ def main():
         sys.exit("Attitude signs are not verified. Run calibrate_signs.py, copy the printed "
                  "signs into this script, then set SIGNS_VERIFIED = True.")
 
-    k, b = K, B  # can change these live
+    k, b = K, B  # live
     mapper = HandMapper(FENCE, "x", "z", active_u=ACTIVE_U)
     use_camera = not (args.no_camera or args.headless)
     offset = START_OFFSET if args.offset is None else args.offset
@@ -160,7 +153,7 @@ def main():
             frame_id, frame, hand = tracker.latest() if use_camera else (0, None, HandState())
             grabbed = hand.detected and hand.grabbed
 
-            # virtual spring/damper on measured state
+            # spring + damper
             force = -k * (s.x - X0) - b * s.vx
             x_hand = None
             if hand.detected:
@@ -171,7 +164,7 @@ def main():
             ax = force / M
             ay = -Y_KP * (s.y - Y0) - Y_KD * s.vy
 
-            # world accel -> body tilt
+            # accel -> tilt
             c, sn = math.cos(math.radians(s.yaw)), math.sin(math.radians(s.yaw))
             pitch = tilt_deg(c * ax + sn * ay, MAX_TILT_DEG)
             roll = tilt_deg(-sn * ax + c * ay, MAX_TILT_DEG)

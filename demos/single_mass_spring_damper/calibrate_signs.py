@@ -1,8 +1,4 @@
-"""figure out which way pitch / roll / yawrate commands actually move the drone
-
-pitch sign on the cf is weird (inverted) so just measure it.
-+4 deg pitch 0.4 s -> vx?, +4 deg roll 0.4 s -> vy?, +30 deg/s yaw 1 s -> yaw?
-each step moves it ~10-20 cm, keep ~1 m clear. copy the printed signs into msd_pitch.py
+"""measure pitch/roll/yaw signs. small steps, keep ~1 m clear
 
 python demos/single_mass_spring_damper/calibrate_signs.py [--sim]
 """
@@ -37,7 +33,7 @@ def hold(drone, center, seconds, rate):
 
 
 def step(drone, seconds, rate, roll=0.0, pitch=0.0, yawrate=0.0):
-    # returns state before and after
+    # state before, after
     start = drone.state
     end = time.monotonic() + seconds
     while time.monotonic() < end:

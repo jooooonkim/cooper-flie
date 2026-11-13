@@ -1,8 +1,4 @@
-"""msd with no hand. drone hovers at x0, moves to the offset, gets let go and oscillates
-
-the drone is the mass: F = -k (x - x0) - b vx, a = F/m, pitch = atan(a/g)
-x, vx come from lighthouse every loop. y held at Y0 with roll, yaw held at 0,
-height held onboard (zdistance). ctrl+c lands
+"""msd, no hand. hover at x0, move to offset, let go
 
 python demos/single_mass_spring_damper/msd_set.py --sim
 """
@@ -28,8 +24,8 @@ M = 1.0                  # kg
 K = 3.0                  # N/m
 B = 0.4                  # N*s/m
 X0 = 0.0                 # rest position, m
-OFFSET = 0.4             # m from X0, where it gets let go
-DURATION = 15.0          # s of oscillation, then it lands
+OFFSET = 0.4             # release point, m
+DURATION = 15.0          # s
 
 HEIGHT = 0.7             # m
 Y0 = 0.0                 # m
@@ -38,21 +34,20 @@ Y_KP, Y_KD = 4.0, 2.5    # y hold
 YAW_KP = 2.0             # deg/s per deg
 RATE_HZ = 50
 
-# from calibrate_signs.py, wont fly until verified
+# from calibrate_signs.py
 PITCH_SIGN = -1
 ROLL_SIGN = -1
 YAW_SIGN = 1
 SIGNS_VERIFIED = False
 
 FENCE = Fence(x=(-1.0, 1.0), y=(-1.0, 1.0), z=(0.2, 1.4))   # m
-STATE_TIMEOUT = 0.25     # s with no position -> land
-MAX_YAW_ERROR = 25.0     # deg -> land
+STATE_TIMEOUT = 0.25     # s
+MAX_YAW_ERROR = 25.0     # deg
 
 LOG_FIELDS = ["t", "x", "y", "z", "vx", "vy", "yaw", "pitch_cmd", "roll_cmd", "m", "k", "b", "x0"]
 
 
 def tilt(accel):
-    # m/s^2 -> deg, clamped
     return float(np.clip(math.degrees(math.atan2(accel, G)), -MAX_TILT_DEG, MAX_TILT_DEG))
 
 
@@ -66,14 +61,14 @@ def main():
 
     signs = {"pitch": PITCH_SIGN, "roll": ROLL_SIGN, "yaw": YAW_SIGN}
     with open_drone(args.uri, sim=args.sim, signs=signs) as drone, CsvLog("msd_set", LOG_FIELDS) as log:
-        # 1. take off and hover at the rest position
+        # 1. hover at x0
         drone.takeoff(HEIGHT)
         drone.go_to(X0, Y0, HEIGHT, 0.0, 3.0)
 
-        # 2. move out to the offset
+        # 2. move to offset
         drone.go_to(X0 + OFFSET, Y0, HEIGHT, 0.0, 3.0)
 
-        # 3. let go, from here its just the spring and damper
+        # 3. let go
         print("let go")
         rate = Rate(RATE_HZ)
         t0 = time.monotonic()
@@ -90,10 +85,10 @@ def main():
                 print("yaw drifted, check YAW_SIGN")
                 break
 
-            # spring + damper on where the drone actually is
+            # spring + damper
             ax = (-K * (s.x - X0) - B * s.vx) / M
 
-            # keep y and yaw still
+            # hold y, yaw
             ay = -Y_KP * (s.y - Y0) - Y_KD * s.vy
             yawrate = -YAW_KP * s.yaw
 
@@ -109,7 +104,7 @@ def main():
             i += 1
             rate.sleep()
 
-        # 4. stop where it is, then the with block lands it
+        # 4. stop, land
         print("landing")
         drone.go_to(*FENCE.clamp(drone.state.pos, margin=0.1), 0.0, 1.5)
 

@@ -1,8 +1,6 @@
-"""plot a msd_pitch or msd_set run vs the ideal msd
+"""plot newest log vs ideal msd (or pass a csv)
 
-each free stretch gets re-simulated from the measured state at its start
-
-python demos/single_mass_spring_damper/plot_log.py   (newest log, or pass a csv)
+python demos/single_mass_spring_damper/plot_log.py
 """
 
 import csv
@@ -23,14 +21,13 @@ def load(path):
     cols = {}
     for key in ("t", "x", "vx", "pitch_cmd", "m", "k", "b", "x0"):
         cols[key] = np.array([float(r[key]) for r in rows])
-    # msd_set logs have no hand columns
     cols["grabbed"] = np.array([float(r.get("grabbed") or 0) for r in rows])
     cols["x_hand"] = np.array([float(r["x_hand"]) if r.get("x_hand") else np.nan for r in rows])
     return cols
 
 
 def ideal(t, x_start, v_start, m, k, b, x0):
-    # rk4 of m x'' = -k (x - x0) - b x' on the log timestamps
+    # rk4, m x'' = -k (x - x0) - b x'
     def f(state):
         x, v = state
         return np.array([v, (-k * (x - x0) - b * v) / m])
@@ -50,7 +47,7 @@ def ideal(t, x_start, v_start, m, k, b, x0):
 
 
 def free_segments(d):
-    # stretches where its not grabbed and k, b didnt change
+    # free stretches
     key = np.stack([d["grabbed"], d["m"], d["k"], d["b"], d["x0"]], axis=1)
     breaks = np.flatnonzero(np.any(np.diff(key, axis=0) != 0, axis=1)) + 1
     for seg in np.split(np.arange(len(d["t"])), breaks):
