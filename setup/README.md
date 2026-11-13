@@ -1,132 +1,169 @@
 # setup
 
-getting a drone from out of the box to flying with the scripts in this repo.
-do these in order the first time, after that just `check_drone.py` before flying.
+getting a drone from out of the box to flying with the scripts in this repo, on ubuntu.
+everything here is done in cfclient except the last keyboard flight test.
+
+bitcraze getting started: https://www.bitcraze.io/documentation/start/
 
 ```
 README.md             this
-scan.py               find drones the radio can see
-check_drone.py        connect + check decks, battery, lighthouse, position (no flying)
-lighthouse_config.py  save / load the base station config to a yaml file
-lighthouse_configs/   saved configs (the 2024_* ones are from the old lab setup)
+lighthouse_configs/   saved lighthouse system configs (2024_* are from the old lab setup)
 ```
 
-## what you need
+## what's needed
 
 - crazyflie 2.1 (or 2.1+ / brushless) with the lighthouse deck on top
 - crazyradio (pa or 2.0)
+- micro usb cable
 - 2+ lighthouse v2 base stations, ~50 cm above the flight area, no mirrors/sunlight
+
+https://www.bitcraze.io/products/crazyflie-2-1/
 
 ## 1. install
 
 from the repo root:
 
 ```
-python -m venv .venv
-.venv\Scripts\activate
+sudo apt install git python3-pip libxcb-xinerama0 libxcb-cursor0
+python3 -m venv .venv
+source .venv/bin/activate
 pip install -r requirements.txt
 pip install cfclient
 ```
 
-start the client with `cfclient`.
+cfclient starts with `cfclient`.
 
-## 2. radio driver (windows)
+https://www.bitcraze.io/documentation/repository/crazyflie-clients-python/master/installation/install/
 
-the crazyradio needs the libusb driver or nothing can see it.
+## 2. radio driver (ubuntu)
 
-1. plug in the crazyradio
-2. get zadig (zadig.akeo.ie), select the crazyradio in the list
-   (options > list all devices if its not there)
-3. pick **libusb-win32**, click install
-4. device manager should now show it under libusb devices
+linux needs usb permissions for the crazyradio and the crazyflie, otherwise
+cfclient cant see them.
 
-if it connects only sometimes, redo it with **libusbK** instead.
+```
+sudo groupadd plugdev
+sudo usermod -a -G plugdev $USER
+```
+
+log out and back in, then add the udev rules:
+
+```
+cat <<EOF | sudo tee /etc/udev/rules.d/99-bitcraze.rules > /dev/null
+# Crazyradio (normal operation)
+SUBSYSTEM=="usb", ATTRS{idVendor}=="1915", ATTRS{idProduct}=="7777", MODE="0664", GROUP="plugdev"
+# Bootloader
+SUBSYSTEM=="usb", ATTRS{idVendor}=="1915", ATTRS{idProduct}=="0101", MODE="0664", GROUP="plugdev"
+# Crazyflie (over USB)
+SUBSYSTEM=="usb", ATTRS{idVendor}=="0483", ATTRS{idProduct}=="5740", MODE="0664", GROUP="plugdev"
+EOF
+sudo udevadm control --reload-rules
+sudo udevadm trigger
+```
+
+unplug and replug the crazyradio after.
+
+https://www.bitcraze.io/documentation/repository/crazyflie-lib-python/master/installation/usb_permissions/
 
 ## 3. first connect
 
-1. turn the drone on, open cfclient
-2. leave the address as `0xE7E7E7E7E7` (factory default), hit **scan**
-3. pick the uri in the dropdown, hit **connect**
+1. open cfclient
+2. connect the battery to the drone
+3. connect the drone to the computer with micro usb
+4. hit **scan**, look for `usb://0` in the dropdown, then **connect**
+5. connect > configure 2.x
+6. set the radio channel and address, **write**, then power cycle the drone
 
-or `python setup/scan.py` without cfclient.
-
-## 4. firmware
-
-do this with the lighthouse deck mounted, it updates the deck too.
-
-1. connect > bootloader
-2. connect to the drone in that window
-3. from release > pick the latest for your platform (cf2.1 etc)
-4. program, wait for it to finish and restart
-
-## 5. radio address / channel
-
-every drone needs its own uri, otherwise two drones answer the same radio.
-
-1. connect to the drone
-2. connect > configure 2.x
-3. set channel (0-125), datarate (2M) and address
-4. write, then power cycle the drone and connect with the new uri
-
-for several drones on one crazyradio, keep the same channel and change only
-the last byte of the address (E7E7E7E701, E7E7E7E702, ...). the radio doesnt
-have to hop channels that way. write the label on the drone.
+the channel and address are what wireless connections and the python scripts
+use (`radio://0/<channel>/2M/<address>`). each drone gets its own channel and
+address. when flying several at once on the same address, give each one a
+different channel. label the drone with its uri.
 
 | drone | uri | notes |
 |---|---|---|
 | | radio://0/80/2M/E7E7E7E7E9 | 2024 lab default |
 | | | |
 
-the uri then goes in `URI = ...` at the top of whatever script you run,
-or `--uri radio://...` on the command line.
+the uri goes in `URI = ...` at the top of whatever script is run, or
+`--uri radio://...` on the command line.
 
-## 6. lighthouse
+https://www.bitcraze.io/documentation/repository/crazyflie-clients-python/master/userguides/userguide_client/
 
-in cfclient: view > tabs > lighthouse positioning
+## 4. firmware
 
-1. **set bs channel**: give each base station its own channel (1, 2, ...).
+done with the lighthouse deck mounted, it updates the deck too.
+
+1. connect > bootloader
+2. connect to the drone in that window
+3. from release > pick the latest for the relevant platform (cf2.1 etc)
+4. program, wait for it to finish and restart
+
+https://www.bitcraze.io/documentation/tutorials/getting-started-with-crazyflie-2-x/
+
+## 5. lighthouse
+
+in cfclient: view > tabs > lighthouse positioning. connect to the drone over
+radio first.
+
+1. **set bs channel**: each base station gets its own channel (1, 2, ...).
    one at a time, wait for "success!"
-2. connect to a drone, **switch bs version** to v2 if its not
-3. hold the drone in the space for ~20 s so it gets the calibration
-4. **start set up** and follow it: origin, +x at 1 m, a few xy floor samples,
+2. **switch bs version** to v2 if its not already
+3. hold the drone in the flight area for ~20 s so it picks up the base
+   station calibration
+
+### calibration
+
+1. **manage geometry** (**start set up** in newer cfclient)
+2. follow what cfclient asks for: origin, +x at 1 m, a few xy floor samples,
    then xyz samples around the flight volume
-5. it uploads to the drone when done (status says uploaded)
+3. it estimates the geometry and uploads it to the drone (status says uploaded)
 
-check the grid: receiving green for every base station, calibration green,
-geometry green. errors over ~10 mm in sample details means redo some samples.
+the grid in the tab should show receiving, calibration and geometry green for
+every base station. errors over ~10 mm in sample details means some samples
+need redoing.
 
-### saving it
+### saving the config
 
-the geometry lives on the drone. save it so other drones (or this one after a
-reflash) dont need the whole setup again:
+the geometry lives directly on the drone, in its own memory. it survives power
+off but gets lost on some reflashes, and other drones dont have it.
+
+- **save system config** (**export configuration** in newer cfclient) writes it
+  to a yaml file. keep it in `setup/lighthouse_configs/` with the date in the name
+- **load system config** (**import configuration**) writes a saved yaml onto a
+  drone, so every drone shares the same coordinate frame without redoing the
+  calibration
+
+if a base station gets bumped, redo the calibration and save a new config.
+the `2024_*` configs only work if the base stations are exactly where they were
+in july 2024.
+
+https://www.bitcraze.io/documentation/tutorials/getting-started-with-lighthouse/
+https://www.bitcraze.io/documentation/repository/crazyflie-clients-python/master/userguides/userguide_client/lighthouse_tab/
+
+## 6. check before flying
+
+all in cfclient, with the drone connected over radio and sitting in the flight area:
+
+- **battery**: flight control tab, above ~3.8 V
+- **base stations**: lighthouse tab, every base station receiving (green)
+- **position**: lighthouse tab 3d view, the drone dot stays still and doesnt drift or jump
+
+https://www.bitcraze.io/documentation/repository/crazyflie-clients-python/master/userguides/userguide_client/
+
+## 7. keyboard flight
+
+close cfclient first, only one program can use the crazyradio at a time.
 
 ```
-python setup/lighthouse_config.py save lab_2026_10.yaml
-python setup/lighthouse_config.py load lab_2026_10.yaml --uri radio://0/80/2M/E7E7E7E701
+python test/01_keyboard_flight.py --uri radio://0/80/2M/E7E7E7E7E9
 ```
 
-cfclient's **export configuration** / **import configuration** buttons do the
-same thing. if a base station gets bumped, redo step 4 and save again.
-
-the `2024_*` configs only work if the base stations are still exactly where
-they were in july 2024. probably not, so redo the setup and save a new one.
-
-## 7. check before flying
-
-```
-python setup/check_drone.py --uri radio://0/80/2M/E7E7E7E7E9
-```
-
-it doesnt take off. look for: lighthouse deck found, battery > 3.8 V,
-all base stations received, position steady (not drifting).
-
-then `test/01_keyboard_flight.py`.
+w/a/s/d move, o/p up/down, q land, esc kills the motors.
 
 ## problems
 
-- **scan finds nothing**: radio driver (step 2), drone on, right address in the scan box
-- **connects then drops**: battery, or two drones on the same uri
-- **position jumps / drifts**: base stations blocked or bumped, redo geometry
-- **calibration orange**: base station changed since the geometry was made, redo step 4
-- **wont take off**: newer firmware needs arming, the scripts do this. in cfclient use the arm button
-- **pip install cfclient fails**: try python 3.12 in its own venv
+- **scan finds nothing**: usb permissions (step 2), drone on, cable is a data cable
+- **connects then drops**: low battery, or two drones on the same uri
+- **position jumps / drifts**: base stations blocked or bumped, redo the calibration
+- **calibration orange**: a base station changed since the geometry was made, redo the calibration
+- **wont take off**: newer firmware needs arming. the scripts do this, cfclient has an arm button
+- **script cant find the radio**: cfclient still open and holding it
