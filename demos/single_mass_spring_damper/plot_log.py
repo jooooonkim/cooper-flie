@@ -1,4 +1,4 @@
-"""plot a msd_pitch run vs the ideal msd
+"""plot a msd_pitch or msd_set run vs the ideal msd
 
 each free stretch gets re-simulated from the measured state at its start
 
@@ -21,9 +21,11 @@ def load(path):
     with open(path, encoding="utf-8") as f:
         rows = list(csv.DictReader(f))
     cols = {}
-    for key in ("t", "x", "vx", "pitch_cmd", "grabbed", "m", "k", "b", "x0"):
+    for key in ("t", "x", "vx", "pitch_cmd", "m", "k", "b", "x0"):
         cols[key] = np.array([float(r[key]) for r in rows])
-    cols["x_hand"] = np.array([float(r["x_hand"]) if r["x_hand"] else np.nan for r in rows])
+    # msd_set logs have no hand columns
+    cols["grabbed"] = np.array([float(r.get("grabbed") or 0) for r in rows])
+    cols["x_hand"] = np.array([float(r["x_hand"]) if r.get("x_hand") else np.nan for r in rows])
     return cols
 
 
@@ -60,7 +62,8 @@ def main():
     if len(sys.argv) > 1:
         path = Path(sys.argv[1])
     else:
-        logs = sorted(LOG_DIR.glob("single_msd_*.csv"))
+        logs = sorted([*LOG_DIR.glob("single_msd_*.csv"), *LOG_DIR.glob("msd_set_*.csv")],
+                      key=lambda p: p.stat().st_mtime)
         if not logs:
             sys.exit(f"No logs in {LOG_DIR}")
         path = logs[-1]
@@ -69,15 +72,17 @@ def main():
 
     fig, (ax1, ax2) = plt.subplots(2, 1, sharex=True, figsize=(10, 6))
     ax1.plot(t, d["x"], label="drone x (measured)", color="tab:red")
-    ax1.plot(t, d["x_hand"], label="hand x", color="tab:green", alpha=0.5)
+    if not np.all(np.isnan(d["x_hand"])):
+        ax1.plot(t, d["x_hand"], label="hand x", color="tab:green", alpha=0.5)
     first = True
     for seg in free_segments(d):
         i = seg[0]
         x_ideal = ideal(t[seg], d["x"][i], d["vx"][i], d["m"][i], d["k"][i], d["b"][i], d["x0"][i])
         ax1.plot(t[seg], x_ideal, "--", color="black", lw=1, label="ideal model" if first else None)
         first = False
-    ax1.fill_between(t, *ax1.get_ylim(), where=d["grabbed"] > 0, color="tab:green", alpha=0.1,
-                     label="grabbed")
+    if d["grabbed"].any():
+        ax1.fill_between(t, *ax1.get_ylim(), where=d["grabbed"] > 0, color="tab:green", alpha=0.1,
+                         label="grabbed")
     ax1.set_ylabel("x (m)")
     ax1.legend(loc="upper right")
     ax1.set_title(path.name)
