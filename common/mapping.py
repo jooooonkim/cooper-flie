@@ -2,7 +2,7 @@ import numpy as np
 
 
 class HandMapper:
-    # image u, v (0..1) -> world axes. active_u/v region gets stretched over the fence
+    # image -> world
 
     def __init__(self, fence, horizontal="x", vertical="z", invert_horizontal=False,
                  active_u=(0.15, 0.85), active_v=(0.15, 0.85), margin=0.1):
@@ -19,11 +19,10 @@ class HandMapper:
         return 1.0 - s if self.invert_h else s
 
     def _t(self, v):
-        # top of image = high end
+        # top = high
         return 1.0 - np.clip((v - self.v_lo) / (self.v_hi - self.v_lo), 0.0, 1.0)
 
     def to_world(self, u, v):
-        # returns {axis: value}
         h_lo, h_hi = self.h_range
         v_lo, v_hi = self.v_range
         return {
@@ -32,7 +31,7 @@ class HandMapper:
         }
 
     def velocity_to_world(self, du, dv):
-        # image vel -> m/s (ignores clamping)
+        # -> m/s
         h_scale = (self.h_range[1] - self.h_range[0]) / (self.u_hi - self.u_lo)
         v_scale = (self.v_range[1] - self.v_range[0]) / (self.v_hi - self.v_lo)
         return {
@@ -41,7 +40,7 @@ class HandMapper:
         }
 
     def h_to_u(self, value):
-        # world -> image u, for drawing
+        # for drawing
         h_lo, h_hi = self.h_range
         s = (value - h_lo) / (h_hi - h_lo)
         if self.invert_h:
@@ -49,7 +48,7 @@ class HandMapper:
         return self.u_lo + s * (self.u_hi - self.u_lo)
 
     def v_to_v(self, value):
-        # world -> image v, for drawing
+        # for drawing
         v_lo, v_hi = self.v_range
         t = (value - v_lo) / (v_hi - v_lo)
         return self.v_lo + (1.0 - t) * (self.v_hi - self.v_lo)

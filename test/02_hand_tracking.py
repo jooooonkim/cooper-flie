@@ -1,8 +1,4 @@
-"""hand tracking test, no drone
-
-palm dot outlined = open, filled = grabbed. bar on the right is openness vs thresholds.
-tune here then copy the numbers into the flying scripts. q/esc to quit
-"""
+"""hand tracking test, no drone. q/esc quit"""
 
 import sys
 from pathlib import Path
@@ -20,9 +16,9 @@ CAMERA = 0
 GRAB_BELOW = 1.30        # below -> grabbed
 RELEASE_ABOVE = 1.60     # above -> open
 DEBOUNCE_FRAMES = 3
-FENCE = Fence(x=(-1.0, 1.0), y=(-1.0, 1.0), z=(0.2, 1.4))   # m, just for the readout
+FENCE = Fence(x=(-1.0, 1.0), y=(-1.0, 1.0), z=(0.2, 1.4))   # m
 HORIZONTAL, VERTICAL = "x", "z"   # image left-right / up-down
-ACTIVE_U = (0.15, 0.85)  # part of the image that covers the fence
+ACTIVE_U = (0.15, 0.85)
 ACTIVE_V = (0.15, 0.85)
 
 

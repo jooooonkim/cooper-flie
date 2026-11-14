@@ -1,7 +1,4 @@
-"""keyboard flight test (radio, positioning, flight)
-
-w/s fwd/back, a/d left/right, o/p up/down, q land, esc kill (motors off)
-hold a key to move, let go and it holds. keys are global
+"""keyboard flight. wasd, o/p up/down, q land, esc kill
 
 python test/01_keyboard_flight.py [--sim]
 """
@@ -22,11 +19,11 @@ from common.safety import Fence
 from common.util import Rate
 
 # settings
-URI = "radio://0/80/2M/E7E7E7E7E9"   # check in cfclient
+URI = "radio://0/80/2M/E7E7E7E7E9"   # from cfclient
 TAKEOFF_HEIGHT = 0.5                 # m
 SPEED = 0.5                          # m/s
 FENCE = Fence(x=(-1.0, 1.0), y=(-1.0, 1.0), z=(0.2, 1.4))   # m
-STATE_TIMEOUT = 0.25                 # s with no position -> land
+STATE_TIMEOUT = 0.25                 # s
 
 DIRECTIONS = {
     "w": (1, 0, 0), "s": (-1, 0, 0),

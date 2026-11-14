@@ -1,7 +1,4 @@
-"""move the drone with your hand
-
-grab = drone follows your hand (relative to where you grabbed so it doesnt jump)
-let go / lose the hand = it holds. q land, esc kill (camera window focused)
+"""grab = drone follows hand, let go = hold. q land, esc kill
 
 python test/03_hand_drone.py [--sim]
 """
@@ -26,7 +23,7 @@ URI = "radio://0/80/2M/E7E7E7E7E9"
 TAKEOFF_HEIGHT = 0.5     # m
 MAX_SPEED = 0.5          # m/s
 FENCE = Fence(x=(-1.0, 1.0), y=(-1.0, 1.0), z=(0.2, 1.4))   # m
-STATE_TIMEOUT = 0.25     # s with no position -> land
+STATE_TIMEOUT = 0.25     # s
 
 CAMERA = 0
 GRAB_BELOW = 1.30        # from 02_hand_tracking
@@ -71,7 +68,7 @@ def main():
                 drone_anchor = target.copy()
             elif not hand.grabbed and grabbing:
                 grabbing = False
-                goal = target.copy()  # let go, hold here
+                goal = target.copy()  # hold
 
             if grabbing:
                 world = mapper.to_world(hand.u, hand.v)

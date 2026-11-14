@@ -1,8 +1,4 @@
-"""crazyflie wrapper + sim drone with the same methods, so everything runs with --sim
-
-setpoints have to keep streaming (~50 Hz). firmware levels out after ~0.5 s
-without one and cuts motors after ~2 s. leaving the with block lands it.
-"""
+"""crazyflie + sim drone, same methods. setpoints must keep streaming"""
 
 import math
 import threading
@@ -18,7 +14,7 @@ G = 9.81
 
 @dataclass
 class State:
-    t: float = 0.0  # host time of last update
+    t: float = 0.0  # host time
     x: float = 0.0
     y: float = 0.0
     z: float = 0.0
@@ -32,7 +28,7 @@ class State:
         return np.array([self.x, self.y, self.z])
 
 
-# tilt -> command sign, get these from calibrate_signs.py
+# from calibrate_signs.py
 DEFAULT_SIGNS = {"pitch": -1, "roll": -1, "yaw": 1}
 
 
@@ -85,7 +81,7 @@ class Drone:
     def _start_logging(self):
         from cflib.crazyflie.log import LogConfig
 
-        # max 26 bytes per log block so pos and vel are split
+        # 26 byte limit per block
         pos = LogConfig(name="pos", period_in_ms=10)
         for var in ("x", "y", "z", "yaw"):
             pos.add_variable(f"stateEstimate.{var}", "float")
@@ -119,7 +115,7 @@ class Drone:
     def state_age(self):
         return time.monotonic() - self.state.t
 
-    # high level commands, these block
+    # blocking
 
     def takeoff(self, height=0.5, duration=2.0):
         self.cf.high_level_commander.takeoff(height, duration)
@@ -140,34 +136,30 @@ class Drone:
         self.cf.supervisor.send_arming_request(False)
 
     def kill(self):
-        # motors off right away, it falls
+        # motors off
         self.cf.commander.send_stop_setpoint()
         self.flying = False
 
-    # streaming setpoints, call every loop
+    # streaming, call every loop
 
     def position_setpoint(self, x, y, z, yaw=0.0):
         self.cf.commander.send_position_setpoint(x, y, z, yaw)
         self._streaming = True
 
     def attitude_setpoint(self, roll, pitch, yawrate, z):
-        # roll/pitch deg, yawrate deg/s, z height m
+        # deg, deg/s, m
         self.cf.commander.send_zdistance_setpoint(roll, pitch, yawrate, z)
         self._streaming = True
 
     def stop_streaming(self):
-        # give control back to the high level commander
+        # back to high level
         if self._streaming:
             self.cf.commander.send_notify_setpoint_stop()
             self._streaming = False
 
 
 class SimDrone:
-    """point mass stand-in for the cf, 200 Hz thread
-
-    position mode = critically damped 2nd order. attitude mode = a = g*tan(tilt)
-    with a small lag + linear drag. uses the same signs as the script
-    """
+    """point mass sim, 200 Hz"""
 
     RATE = 200.0
     WN_POS = 3.0  # rad/s
@@ -182,7 +174,7 @@ class SimDrone:
         self._p = np.zeros(3)
         self._v = np.zeros(3)
         self._yaw = 0.0
-        self._tilt = np.zeros(2)  # actual pitch, roll (deg)
+        self._tilt = np.zeros(2)  # pitch, roll, deg
         self._mode = "idle"
         self._target = np.zeros(3)
         self._target_yaw = 0.0
@@ -231,7 +223,7 @@ class SimDrone:
             self._tilt[:] = 0.0
         else:  # attitude
             roll, pitch, yawrate, z = self._att_cmd
-            # undo the command sign -> actual tilt
+            # undo sign
             phys = np.array([self._signs["pitch"] * pitch, self._signs["roll"] * roll])
             self._tilt += (phys - self._tilt) * min(1.0, dt / self.TAU_ATT)
             a_body = G * np.tan(np.radians(self._tilt))  # (forward, left)

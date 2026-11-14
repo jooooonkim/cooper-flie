@@ -7,7 +7,7 @@ from .paths import LOG_DIR
 
 
 class Rate:
-    # fixed rate loop, no drift
+    # fixed rate loop
 
     def __init__(self, hz):
         self.dt = 1.0 / hz
@@ -19,12 +19,12 @@ class Rate:
             time.sleep(delay)
             self._next += self.dt
         else:
-            # fell behind, restart instead of trying to catch up
+            # fell behind
             self._next = time.perf_counter() + self.dt
 
 
 class OneEuroFilter:
-    # smooth when still, less lag when moving fast (casiez et al. 2012)
+    # one euro filter
 
     def __init__(self, min_cutoff=1.0, beta=0.0, d_cutoff=1.0):
         self.min_cutoff = min_cutoff
@@ -57,7 +57,7 @@ class OneEuroFilter:
 
 
 class CsvLog:
-    # writes logs/<name>_<timestamp>.csv
+    # logs/<name>_<time>.csv
 
     def __init__(self, name, fields):
         LOG_DIR.mkdir(exist_ok=True)

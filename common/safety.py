@@ -2,7 +2,7 @@ import numpy as np
 
 
 class Fence:
-    # box the drone has to stay in, world frame
+    # flight box
 
     def __init__(self, x, y, z):
         self.lo = np.array([x[0], y[0], z[0]], dtype=float)
