@@ -8,7 +8,7 @@ setup/         drone + cfclient + radio + lighthouse setup, start here
 common/        shared code: drone wrapper (+ simulated drone), hand tracker, mapping, safety
 test/          bring-up scripts, run in order
 demos/         dynamic-system demos
-2024_demos/    the original 2024 demos, kept as they were
+2024_demos/    the original 2024 hand-control demos (single/double MSD, pendulum, echo)
 ```
 
 ## Setup
@@ -19,7 +19,7 @@ python -m venv .venv
 pip install -r requirements.txt
 ```
 
-The hand-tracking model (`models/hand_landmarker.task`, about 8 MB) downloads
+The hand-tracking model (`models/hand_landmarker.task`) downloads
 on first use. For the drone, radio, cfclient and lighthouse side see
 `setup/README.md`.
 
@@ -28,7 +28,7 @@ gains, hand thresholds), so different scripts can use different values.
 Check `URI` and `FENCE` before flying. The URI can also be given on the
 command line: `--uri radio://0/80/2M/E7E7E7E7E9`.
 
-Every flying script takes `--sim` to run against a simulated drone first.
+Use `--sim` on any flying script to simulate a drone first.
 
 ## Tests
 
