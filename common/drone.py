@@ -48,6 +48,8 @@ class Drone:
         self._streaming = False
         self._state = State()
         self._lock = threading.Lock()
+        self.killed = False
+        self._cmd_lock = threading.Lock()  # so nothing gets sent after a kill
 
     def __enter__(self):
         import cflib.crtp
@@ -117,39 +119,65 @@ class Drone:
 
     # blocking
 
+    def _wait(self, seconds):
+        # sleep, but stop early on kill
+        end = time.monotonic() + seconds
+        while not self.killed and time.monotonic() < end:
+            time.sleep(0.02)
+
     def takeoff(self, height=0.5, duration=2.0):
-        self.cf.high_level_commander.takeoff(height, duration)
-        self.flying = True
-        time.sleep(duration + 0.3)
+        with self._cmd_lock:
+            if self.killed:
+                return
+            self.cf.high_level_commander.takeoff(height, duration)
+            self.flying = True
+        self._wait(duration + 0.3)
 
     def go_to(self, x, y, z, yaw=0.0, duration=2.0):
-        self.stop_streaming()
-        self.cf.high_level_commander.go_to(x, y, z, math.radians(yaw), duration)
-        time.sleep(duration + 0.2)
+        with self._cmd_lock:
+            if self.killed:
+                return
+            self.stop_streaming()
+            self.cf.high_level_commander.go_to(x, y, z, math.radians(yaw), duration)
+        self._wait(duration + 0.2)
 
     def land(self, duration=2.5):
-        self.stop_streaming()
-        self.cf.high_level_commander.land(0.0, duration)
-        time.sleep(duration + 0.5)
-        self.cf.high_level_commander.stop()
-        self.flying = False
-        self.cf.supervisor.send_arming_request(False)
+        with self._cmd_lock:
+            if self.killed:
+                return
+            self.stop_streaming()
+            self.cf.high_level_commander.land(0.0, duration)
+        self._wait(duration + 0.5)
+        with self._cmd_lock:
+            if self.killed:
+                return
+            self.cf.high_level_commander.stop()
+            self.flying = False
+            self.cf.supervisor.send_arming_request(False)
 
     def kill(self):
-        # motors off
-        self.cf.commander.send_stop_setpoint()
-        self.flying = False
+        # motors off, ignores every command after
+        with self._cmd_lock:
+            self.killed = True
+            self.cf.commander.send_stop_setpoint()
+            self.flying = False
 
     # streaming, call every loop
 
     def position_setpoint(self, x, y, z, yaw=0.0):
-        self.cf.commander.send_position_setpoint(x, y, z, yaw)
-        self._streaming = True
+        with self._cmd_lock:
+            if self.killed:
+                return
+            self.cf.commander.send_position_setpoint(x, y, z, yaw)
+            self._streaming = True
 
     def attitude_setpoint(self, roll, pitch, yawrate, z):
         # deg, deg/s, m
-        self.cf.commander.send_zdistance_setpoint(roll, pitch, yawrate, z)
-        self._streaming = True
+        with self._cmd_lock:
+            if self.killed:
+                return
+            self.cf.commander.send_zdistance_setpoint(roll, pitch, yawrate, z)
+            self._streaming = True
 
     def stop_streaming(self):
         # back to high level
@@ -181,6 +209,7 @@ class SimDrone:
         self._att_cmd = (0.0, 0.0, 0.0, 0.0)
         self._stop = threading.Event()
         self._thread = threading.Thread(target=self._run, daemon=True)
+        self.killed = False
 
     def __enter__(self):
         print("Simulated drone ready.")
@@ -253,31 +282,43 @@ class SimDrone:
 
     def _set_target(self, x, y, z, yaw=0.0):
         with self._lock:
+            if self.killed:
+                return
             self._mode = "position"
             self._target = np.array([x, y, z], dtype=float)
             self._target_yaw = yaw
 
+    def _wait(self, seconds):
+        end = time.monotonic() + seconds
+        while not self.killed and time.monotonic() < end:
+            time.sleep(0.02)
+
     def takeoff(self, height=0.5, duration=2.0):
+        if self.killed:
+            return
         s = self.state
         self._set_target(s.x, s.y, height)
         self.flying = True
-        time.sleep(duration + 0.3)
+        self._wait(duration + 0.3)
 
     def go_to(self, x, y, z, yaw=0.0, duration=2.0):
         self._set_target(x, y, z, yaw)
-        time.sleep(duration + 0.2)
+        self._wait(duration + 0.2)
 
     def land(self, duration=2.5):
         s = self.state
         self._set_target(s.x, s.y, 0.0)
-        time.sleep(duration + 0.5)
+        self._wait(duration + 0.5)
         with self._lock:
+            if self.killed:
+                return
             self._mode = "idle"
             self._p[2] = 0.0
         self.flying = False
 
     def kill(self):
         with self._lock:
+            self.killed = True
             self._mode = "fall"
         self.flying = False
 
@@ -286,6 +327,8 @@ class SimDrone:
 
     def attitude_setpoint(self, roll, pitch, yawrate, z):
         with self._lock:
+            if self.killed:
+                return
             self._mode = "attitude"
             self._att_cmd = (roll, pitch, yawrate, z)
 

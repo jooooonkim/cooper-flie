@@ -1,4 +1,4 @@
-"""measure pitch/roll/yaw signs. small steps, keep ~1 m clear
+"""measure pitch/roll/yaw signs. small steps, keep ~1 m clear. q land, esc kill
 
 python demos/single_mass_spring_damper/calibrate_signs.py [--sim]
 """
@@ -11,6 +11,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from common.drone import open_drone
+from common.keys import Keys
 from common.safety import Fence
 from common.util import Rate
 
@@ -25,18 +26,26 @@ YAWRATE = 30.0           # deg/s
 YAW_TIME = 1.0           # s
 
 
-def hold(drone, center, seconds, rate):
+class Stopped(Exception):
+    pass
+
+
+def hold(drone, keys, center, seconds, rate):
     end = time.monotonic() + seconds
     while time.monotonic() < end:
+        if keys.stop:
+            raise Stopped
         drone.position_setpoint(*center, 0.0)
         rate.sleep()
 
 
-def step(drone, seconds, rate, roll=0.0, pitch=0.0, yawrate=0.0):
+def step(drone, keys, seconds, rate, roll=0.0, pitch=0.0, yawrate=0.0):
     # state before, after
     start = drone.state
     end = time.monotonic() + seconds
     while time.monotonic() < end:
+        if keys.stop:
+            raise Stopped
         if not FENCE.contains(drone.state.pos):
             raise RuntimeError("Left the fence during a step; aborting.")
         drone.attitude_setpoint(roll, pitch, yawrate, HEIGHT)
@@ -55,32 +64,35 @@ def main():
     args = parser.parse_args()
 
     rate = Rate(50)
-    with open_drone(args.uri, sim=args.sim) as drone:
-        drone.takeoff(HEIGHT)
-        s = drone.state
-        center = FENCE.clamp([s.x, s.y, HEIGHT], margin=0.3)
-        drone.go_to(*center, 0.0, 2.0)
+    try:
+        with open_drone(args.uri, sim=args.sim) as drone, Keys(drone) as keys:
+            drone.takeoff(HEIGHT)
+            s = drone.state
+            center = FENCE.clamp([s.x, s.y, HEIGHT], margin=0.3)
+            drone.go_to(*center, 0.0, 2.0)
 
-        hold(drone, center, 1.5, rate)
-        a, b = step(drone, TILT_TIME, rate, pitch=TILT)
-        d_vx = b.vx - a.vx
-        print(f"pitch +{TILT:.0f} deg: vx changed {d_vx:+.3f} m/s")
+            hold(drone, keys, center, 1.5, rate)
+            a, b = step(drone, keys, TILT_TIME, rate, pitch=TILT)
+            d_vx = b.vx - a.vx
+            print(f"pitch +{TILT:.0f} deg: vx changed {d_vx:+.3f} m/s")
 
-        hold(drone, center, 2.5, rate)
-        a, b = step(drone, TILT_TIME, rate, roll=TILT)
-        d_vy = b.vy - a.vy
-        print(f"roll  +{TILT:.0f} deg: vy changed {d_vy:+.3f} m/s")
+            hold(drone, keys, center, 2.5, rate)
+            a, b = step(drone, keys, TILT_TIME, rate, roll=TILT)
+            d_vy = b.vy - a.vy
+            print(f"roll  +{TILT:.0f} deg: vy changed {d_vy:+.3f} m/s")
 
-        hold(drone, center, 2.5, rate)
-        a, b = step(drone, YAW_TIME, rate, yawrate=YAWRATE)
-        d_yaw = (b.yaw - a.yaw + 180.0) % 360.0 - 180.0
-        print(f"yawrate +{YAWRATE:.0f} deg/s: yaw changed {d_yaw:+.1f} deg")
+            hold(drone, keys, center, 2.5, rate)
+            a, b = step(drone, keys, YAW_TIME, rate, yawrate=YAWRATE)
+            d_yaw = (b.yaw - a.yaw + 180.0) % 360.0 - 180.0
+            print(f"yawrate +{YAWRATE:.0f} deg/s: yaw changed {d_yaw:+.1f} deg")
 
-        hold(drone, center, 2.5, rate)
+            hold(drone, keys, center, 2.5, rate)
+    except Stopped:
+        sys.exit("stopped early, no signs measured")
 
     weak = [name for name, value, floor in (("pitch", d_vx, 0.05), ("roll", d_vy, 0.05), ("yaw", d_yaw, 5.0))
             if abs(value) < floor]
-    print("\nCopy into the settings block of msd_pitch.py:")
+    print("\nCopy into the settings block of msd_energy.py:")
     print(f"PITCH_SIGN = {sign_word(d_vx)}")
     print(f"ROLL_SIGN = {sign_word(d_vy)}")
     print(f"YAW_SIGN = {sign_word(d_yaw)}")

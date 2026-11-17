@@ -1,43 +1,47 @@
-# Single mass-spring-damper (pitch control)
+# single mass spring damper
 
-The drone is the mass. Its measured position and velocity along x drive a
-virtual spring and damper, and the resulting acceleration is produced by
-tilting:
+the drone is the mass. its measured x and vx (lighthouse) go into a virtual
+spring and an energy damper, and the acceleration comes from tilting:
 
 ```
-F = -k (x - x0) - b vx  [+ k_hand (x_hand - x) + b_hand (v_hand - vx) while grabbed]
-a = F / m
-pitch = atan(a / g)  ≈ a / g  (clamped to max_tilt_deg)
+x'' = -wn^2 x - b (E - Ed) x'
+E   = 1/2 m x'^2 + 1/2 k x^2
+pitch = atan(x'' / g)
 ```
 
-Commands go out through `send_zdistance_setpoint(roll, pitch, yawrate, z)`:
-height is held onboard, y is held by a PD loop on roll, and yaw by a
-proportional loop on yaw rate. Since the spring and damper act on the
-measured state, they work like a PD position controller with k and b as
-the gains. The drone's real inertia, attitude lag and drag are inside the
-loop, so the flight is the virtual system plus the drone's own physics.
+- E > Ed: the damper takes energy out
+- E < Ed: it puts energy in
+- E = Ed: plain spring
 
-Natural frequency `wn = sqrt(k/m)`, damping ratio `zeta = b / (2 sqrt(k m))`.
-Defaults (m 1, k 3, b 0.4) give a 3.6 s period with zeta 0.12, and a 0.4 m
-release peaks around 7 deg of tilt.
+so it settles into a steady swing with amplitude A = sqrt(2 Ed / k) and holds
+it, even with the drone's own drag and tilt lag.
 
-## Run order
+commands go out with `send_zdistance_setpoint(roll, pitch, yawrate, z)`.
+height is held onboard, y with roll, yaw with yaw rate.
 
-1. `calibrate_signs.py` — flies three small steps and prints the pitch, roll
-   and yaw-rate signs. Copy them into the settings block at the top of
-   `msd_pitch.py` and set `SIGNS_VERIFIED = True`. Do this once per firmware
-   version.
-2. `msd_pitch.py --sim` — try it without hardware.
-3. `msd_pitch.py` — fly it. Grab to drag the mass along x, open your hand to
-   release it. `+`/`-` change k, `[`/`]` change b, `q` lands, `Esc` kills.
-4. `plot_log.py` — plots the newest log against the ideal model, re-simulated
-   from the drone's measured state at the start of every free segment.
+```
+calibrate_signs.py   measures the pitch / roll / yaw signs, run once before flying
+msd_energy.py        the demo
+plot_log.py          plots the newest log vs the ideal model
+```
 
-Useful flags: `--offset 0.4` (start displaced), `--no-camera`,
-`--headless --duration 15` (no window; for logging runs).
+## run order
 
-## What to expect
+1. `calibrate_signs.py`: flies three small steps and prints the signs. they go
+   in the settings block of `msd_energy.py`, with `SIGNS_VERIFIED = True`
+2. `msd_energy.py --sim`: try it with no drone
+3. `msd_energy.py`: hovers at x0, moves to `OFFSET`, lets go. runs until `q`
+   (land) or `esc` (kill motors). lands by itself after `MAX_TIME`
+4. `plot_log.py`: x vs the ideal model, energy vs Ed, tilt command
 
-In simulation (drag 0.25 1/s, 60 ms tilt lag) the period comes out about
-10 % longer than ideal and the decay is faster. The real drone should show
-a similar gap, which is the interesting part to measure.
+## settings
+
+top of `msd_energy.py`: `M`, `K`, `B` (energy gain), `AMPLITUDE` (target swing),
+`OFFSET` (release point), `HEIGHT`, `FENCE`.
+
+## notes
+
+- in sim it settles at 0.294 m for a 0.3 m target. drag keeps taking energy
+  out, so E sits a bit under Ed. bigger `B` closes the gap
+- the period runs a bit longer than 2 pi / wn because of the tilt lag
+- esc drops the drone from wherever it is, first try it close to the floor
