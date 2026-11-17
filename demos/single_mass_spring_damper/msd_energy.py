@@ -2,7 +2,7 @@
 
 x'' = -wn^2 x - b (E - Ed) x',  E = 1/2 m x'^2 + 1/2 k x^2
 
-python demos/single_mass_spring_damper/msd_energy.py --sim
+python3 demos/single_mass_spring_damper/msd_energy.py --sim
 """
 
 import argparse
@@ -83,7 +83,7 @@ def main():
         rate = Rate(RATE_HZ)
         t0 = time.monotonic()
         i = 0
-        # runs until q
+        # runnit baby
         while not keys.stop:
             if time.monotonic() - t0 > MAX_TIME:
                 print("max time")
