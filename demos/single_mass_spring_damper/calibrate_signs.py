@@ -1,4 +1,4 @@
-"""measure pitch/roll/yaw signs. small steps, keep ~1 m clear. q land, esc kill
+"""measure pitch/roll/yaw signs with small +/- steps. q land, esc kill
 
 python demos/single_mass_spring_damper/calibrate_signs.py [--sim]
 """
@@ -10,6 +10,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
+import numpy as np
+
 from common.drone import open_drone
 from common.keys import Keys
 from common.safety import Fence
@@ -20,10 +22,12 @@ URI = "radio://0/80/2M/E7E7E7E7E9"
 HEIGHT = 0.7             # m
 FENCE = Fence(x=(-1.0, 1.0), y=(-1.0, 1.0), z=(0.2, 1.4))   # m
 
-TILT = 4.0               # deg
-TILT_TIME = 0.4          # s
-YAWRATE = 30.0           # deg/s
+TILT = 3.0               # deg
+TILT_TIME = 0.3          # s
+YAWRATE = 20.0           # deg/s
 YAW_TIME = 1.0           # s
+RETURN_SPEED = 0.15      # m/s, back to center between steps
+MAX_DIST = 0.25          # m from center -> stop and land
 
 
 class Stopped(Exception):
@@ -31,26 +35,47 @@ class Stopped(Exception):
 
 
 def hold(drone, keys, center, seconds, rate):
+    # ease back to center, then hold
+    target = drone.state.pos
+    target[2] = center[2]
     end = time.monotonic() + seconds
     while time.monotonic() < end:
         if keys.stop:
-            raise Stopped
-        drone.position_setpoint(*center, 0.0)
+            raise Stopped("stopped early")
+        step = center - target
+        dist = np.linalg.norm(step)
+        if dist > RETURN_SPEED * rate.dt:
+            step *= RETURN_SPEED * rate.dt / dist
+        target = target + step
+        drone.position_setpoint(*target, 0.0)
         rate.sleep()
 
 
-def step(drone, keys, seconds, rate, roll=0.0, pitch=0.0, yawrate=0.0):
+def step(drone, keys, center, seconds, rate, roll=0.0, pitch=0.0, yawrate=0.0):
     # state before, after
     start = drone.state
     end = time.monotonic() + seconds
     while time.monotonic() < end:
         if keys.stop:
-            raise Stopped
-        if not FENCE.contains(drone.state.pos):
-            raise RuntimeError("Left the fence during a step; aborting.")
+            raise Stopped("stopped early")
+        s = drone.state
+        if np.linalg.norm(s.pos[:2] - center[:2]) > MAX_DIST or not FENCE.contains(s.pos):
+            raise Stopped("moved too far")
         drone.attitude_setpoint(roll, pitch, yawrate, HEIGHT)
         rate.sleep()
     return start, drone.state
+
+
+def pair(drone, keys, center, rate, axis):
+    # + step then - step. difference cancels trim and most of the movement
+    out = []
+    for sign in (1, -1):
+        hold(drone, keys, center, 2.5, rate)
+        a, b = step(drone, keys, center, TILT_TIME, rate, **{axis: sign * TILT})
+        v = "vx" if axis == "pitch" else "vy"
+        out.append(getattr(b, v) - getattr(a, v))
+        print(f"{axis} {sign * TILT:+.0f} deg: {v} changed {out[-1]:+.3f} m/s")
+    return out[0] - out[1]
 
 
 def sign_word(sign):
@@ -71,24 +96,17 @@ def main():
             center = FENCE.clamp([s.x, s.y, HEIGHT], margin=0.3)
             drone.go_to(*center, 0.0, 2.0)
 
-            hold(drone, keys, center, 1.5, rate)
-            a, b = step(drone, keys, TILT_TIME, rate, pitch=TILT)
-            d_vx = b.vx - a.vx
-            print(f"pitch +{TILT:.0f} deg: vx changed {d_vx:+.3f} m/s")
+            d_vx = pair(drone, keys, center, rate, "pitch")
+            d_vy = pair(drone, keys, center, rate, "roll")
 
             hold(drone, keys, center, 2.5, rate)
-            a, b = step(drone, keys, TILT_TIME, rate, roll=TILT)
-            d_vy = b.vy - a.vy
-            print(f"roll  +{TILT:.0f} deg: vy changed {d_vy:+.3f} m/s")
-
-            hold(drone, keys, center, 2.5, rate)
-            a, b = step(drone, keys, YAW_TIME, rate, yawrate=YAWRATE)
+            a, b = step(drone, keys, center, YAW_TIME, rate, yawrate=YAWRATE)
             d_yaw = (b.yaw - a.yaw + 180.0) % 360.0 - 180.0
             print(f"yawrate +{YAWRATE:.0f} deg/s: yaw changed {d_yaw:+.1f} deg")
 
             hold(drone, keys, center, 2.5, rate)
-    except Stopped:
-        sys.exit("stopped early, no signs measured")
+    except Stopped as e:
+        sys.exit(f"{e}, no signs measured")
 
     weak = [name for name, value, floor in (("pitch", d_vx, 0.05), ("roll", d_vy, 0.05), ("yaw", d_yaw, 5.0))
             if abs(value) < floor]
