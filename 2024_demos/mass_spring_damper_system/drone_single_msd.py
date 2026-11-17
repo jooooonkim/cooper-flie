@@ -86,7 +86,7 @@ center_x = frame_width // 2
 last_sim_time = 0
 
 # Initialize Crazyflie URI
-URI1 = uri_helper.uri_from_env(default='radio://0/90/2M/E7E7E7E7E9')
+URI1 = uri_helper.uri_from_env(default='radio://0/50/2M/E7E7E7E7E1')
 cflib.crtp.init_drivers()
 logging.basicConfig(level=logging.ERROR)
 

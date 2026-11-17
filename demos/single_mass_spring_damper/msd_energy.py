@@ -21,14 +21,14 @@ from common.safety import Fence
 from common.util import CsvLog, Rate
 
 # settings
-URI = "radio://0/80/2M/E7E7E7E7E9"
+URI = "radio://0/50/2M/E7E7E7E7E1"
 
 M = 1.0                  # kg
 K = 3.0                  # N/m
 B = 10.0                 # energy gain, 1/(J*s)
 X0 = 0.0                 # rest position, m
-AMPLITUDE = 0.3          # target, m
-OFFSET = 0.4             # release point, m
+AMPLITUDE = 0.5          # target, m
+OFFSET = 0.0             # release point, m
 MAX_TIME = 300.0         # s, battery backstop
 
 WN2 = K / M                          # wn^2
@@ -45,7 +45,7 @@ RATE_HZ = 50
 PITCH_SIGN = -1
 ROLL_SIGN = -1
 YAW_SIGN = 1
-SIGNS_VERIFIED = False
+SIGNS_VERIFIED = True
 
 FENCE = Fence(x=(-1.0, 1.0), y=(-1.0, 1.0), z=(0.2, 1.4))   # m
 STATE_TIMEOUT = 0.25     # s

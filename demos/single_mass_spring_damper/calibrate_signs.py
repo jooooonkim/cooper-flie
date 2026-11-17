@@ -18,7 +18,7 @@ from common.safety import Fence
 from common.util import Rate
 
 # settings
-URI = "radio://0/80/2M/E7E7E7E7E9"
+URI = "radio://0/50/2M/E7E7E7E7E1"
 HEIGHT = 0.7             # m
 FENCE = Fence(x=(-1.0, 1.0), y=(-1.0, 1.0), z=(0.2, 1.4))   # m
 

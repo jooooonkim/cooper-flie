@@ -9,7 +9,7 @@ from cflib.crazyflie.syncCrazyflie import SyncCrazyflie
 from cflib.utils import uri_helper
 
 # Initialize Crazyflie URI
-URI = uri_helper.uri_from_env(default='radio://0/80/2M/E7E7E7E7E9')
+URI = uri_helper.uri_from_env(default='radio://0/50/2M/E7E7E7E7E1')
 
 cflib.crtp.init_drivers()
 logging.basicConfig(level=logging.ERROR)
