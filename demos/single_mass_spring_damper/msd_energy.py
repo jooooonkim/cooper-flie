@@ -23,10 +23,10 @@ URI = "radio://0/50/2M/E7E7E7E7E1"
 
 M = 1.0                  # kg
 K = 3.0                  # N/m
-B = 10.0                 # energy gain, 1/(J*s)
-X0 = 0.0                 # rest position, m
+B = 10.0                 # energy gain (? iono if thats the right word)
+X0 = 0.0                 # initial position, m
 AMPLITUDE = 0.5          # target, m
-E_D = 0.5 * K * AMPLITUDE ** 2   # J
+E_D = 0.5 * K * AMPLITUDE ** 2   # desired energy level, J
 
 HEIGHT = 0.7             # m
 MAX_TILT = 12.0          # deg
@@ -69,7 +69,6 @@ def main():
             log.write(t=round(time.monotonic() - t0, 4), x=s.x, vx=s.vx, pitch_cmd=pitch, e=e,
                       m=M, k=K, b=B, x0=X0, e_d=E_D)
             rate.sleep()
-        # leaving the with block lands
 
 
 if __name__ == "__main__":
