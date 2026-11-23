@@ -32,7 +32,6 @@ HEIGHT = 0.7             # m
 MAX_TILT = 12.0          # deg
 Y_KP, Y_KD = 4.0, 2.5    # y hold
 YAW_KP = 2.0             # yaw hold
-SIGNS = {"pitch": -1, "roll": -1, "yaw": 1}   # from calibrate_signs.py
 FENCE = Fence(x=(-1.0, 1.0), y=(-1.0, 1.0), z=(0.2, 1.4))   # m
 
 
@@ -44,7 +43,7 @@ def tilt(accel):
 def main():
     sim = "--sim" in sys.argv
     fields = ["t", "x", "vx", "pitch_cmd", "e", "m", "k", "b", "x0", "e_d"]
-    with open_drone(URI, sim=sim, signs=SIGNS) as drone, CsvLog("msd_energy", fields) as log, \
+    with open_drone(URI, sim=sim) as drone, CsvLog("msd_energy", fields) as log, \
             Keys(drone) as keys:
         drone.takeoff(HEIGHT)
         drone.go_to(X0 + AMPLITUDE, 0.0, HEIGHT, 0.0, 3.0)   # start at amplitude, E = Ed
@@ -64,8 +63,7 @@ def main():
             ay = -Y_KP * s.y - Y_KD * s.vy              # hold y = 0
 
             pitch, roll = tilt(ax), tilt(ay)
-            drone.attitude_setpoint(SIGNS["roll"] * roll, SIGNS["pitch"] * pitch,
-                                    SIGNS["yaw"] * -YAW_KP * s.yaw, HEIGHT)
+            drone.attitude_setpoint(-1 * roll, -1 * pitch, -YAW_KP * s.yaw, HEIGHT)
             log.write(t=round(time.monotonic() - t0, 4), x=s.x, vx=s.vx, pitch_cmd=pitch, e=e,
                       m=M, k=K, b=B, x0=X0, e_d=E_D)
             rate.sleep()
