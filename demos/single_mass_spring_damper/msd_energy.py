@@ -32,7 +32,7 @@ HEIGHT = 0.7             # m
 MAX_TILT = 12.0          # deg
 Y_KP, Y_KD = 4.0, 2.5    # y hold
 YAW_KP = 2.0             # yaw hold
-FENCE = Fence(x=(-1.0, 1.0), y=(-1.0, 1.0), z=(0.2, 1.4))   # m
+FENCE = Fence(x=(-1.5, 1.5), y=(-1.5, 1.5), z=(0.2, 1.4))   # m
 
 
 def tilt(accel):
