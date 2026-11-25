@@ -4,7 +4,7 @@ from pynput import keyboard
 
 
 class Keys:
-    # q = land, esc = kill motors. keys are global, no window needed
+    # q = land, esc = kill motors. keys are global
     #
     #   with open_drone(...) as drone, Keys(drone) as keys:
     #       while not keys.stop: ...
