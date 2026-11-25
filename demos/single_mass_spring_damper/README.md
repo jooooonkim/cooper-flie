@@ -22,6 +22,7 @@ height is held onboard, y with roll, yaw with yaw rate.
 ```
 calibrate_signs.py   measures the pitch / roll / yaw signs, run once before flying
 msd_energy.py        the demo
+msd_rose.py          same idea in the x-z plane: goes around a ring while wobbling, draws a flower
 ```
 
 ## run order
