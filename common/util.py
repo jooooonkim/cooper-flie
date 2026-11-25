@@ -1,9 +1,5 @@
-import csv
 import math
 import time
-from datetime import datetime
-
-from .paths import LOG_DIR
 
 
 class Rate:
@@ -54,27 +50,3 @@ class OneEuroFilter:
         a = self._alpha(cutoff, dt)
         self.x = a * x + (1 - a) * self.x
         return self.x
-
-
-class CsvLog:
-    # logs/<name>_<time>.csv
-
-    def __init__(self, name, fields):
-        LOG_DIR.mkdir(exist_ok=True)
-        self.path = LOG_DIR / f"{name}_{datetime.now():%Y%m%d_%H%M%S}.csv"
-        self.fields = fields
-        self._f = open(self.path, "w", newline="", encoding="utf-8")
-        self._w = csv.DictWriter(self._f, fieldnames=fields)
-        self._w.writeheader()
-
-    def write(self, **row):
-        self._w.writerow(row)
-
-    def close(self):
-        self._f.close()
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, *exc):
-        self.close()

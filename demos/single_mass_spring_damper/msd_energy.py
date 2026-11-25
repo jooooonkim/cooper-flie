@@ -7,17 +7,14 @@ python3 demos/single_mass_spring_damper/msd_energy.py --sim
 
 import math
 import sys
-import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-import numpy as np
-
 from common.drone import G, open_drone
 from common.keys import Keys
 from common.safety import Fence
-from common.util import CsvLog, Rate
+from common.util import Rate
 
 URI = "radio://0/50/2M/E7E7E7E7E1"
 
@@ -37,20 +34,17 @@ FENCE = Fence(x=(-1.5, 1.5), y=(-1.5, 1.5), z=(0.2, 1.4))   # m
 
 def tilt(accel):
     # small angle, a = g theta
-    return float(np.clip(math.degrees(accel / G), -MAX_TILT, MAX_TILT))
+    return max(-MAX_TILT, min(MAX_TILT, math.degrees(accel / G)))
 
 
 def main():
     sim = "--sim" in sys.argv
-    fields = ["t", "x", "vx", "pitch_cmd", "e", "m", "k", "b", "x0", "e_d"]
-    with open_drone(URI, sim=sim) as drone, CsvLog("msd_energy", fields) as log, \
-            Keys(drone) as keys:
+    with open_drone(URI, sim=sim) as drone, Keys(drone) as keys:
         drone.takeoff(HEIGHT)
         drone.go_to(X0 + AMPLITUDE, 0.0, HEIGHT, 0.0, 3.0)   # start at amplitude, E = Ed
-        print("let go")
+        print("let go. q land, esc kill")
 
         rate = Rate(50)
-        t0 = time.monotonic()
         while not keys.stop:
             s = drone.state
             if drone.state_age() > 0.25 or not FENCE.contains(s.pos, slack=0.05):
@@ -64,9 +58,10 @@ def main():
 
             pitch, roll = tilt(ax), tilt(ay)
             drone.attitude_setpoint(-1 * roll, -1 * pitch, -YAW_KP * s.yaw, HEIGHT)
-            log.write(t=round(time.monotonic() - t0, 4), x=s.x, vx=s.vx, pitch_cmd=pitch, e=e,
-                      m=M, k=K, b=B, x0=X0, e_d=E_D)
             rate.sleep()
+
+        if not keys.kill:
+            print("landing")
 
 
 if __name__ == "__main__":
